@@ -11,7 +11,7 @@ A lightweight ORM framework for learning how Hibernate/JPA works internally.
 ## 📦 Package Structure
 
 ```
-com.minihibernate/
+org.ltl.minihibernate/
 ├── annotation/    # Entity mapping annotations
 ├── api/           # Public interfaces (Facade pattern)
 ├── internal/      # Implementation classes (hidden from users)

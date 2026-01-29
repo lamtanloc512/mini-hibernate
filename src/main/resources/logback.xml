@@ -6,7 +6,7 @@
     <logger name="com.zaxxer.hikari.HikariConfig" level="WARN"/>
     
     <!-- Mini-Hibernate logs -->
-    <logger name="com.minihibernate" level="INFO"/>
+    <logger name="org.ltl.minihibernate" level="INFO"/>
     
     <!-- Root logger -->
     <root level="INFO">

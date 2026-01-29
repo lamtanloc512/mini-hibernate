@@ -130,7 +130,7 @@ src/main/java/com/minihibernate/
 mvn compile
 
 # Run demo
-mvn exec:java -Dexec.mainClass="com.minihibernate.MiniHibernateDemo"
+mvn exec:java -Dexec.mainClass="org.ltl.minihibernate.MiniHibernateDemo"
 
 # Run tests
 mvn test

@@ -1,2 +1,2 @@
-com.minihibernate.spi.MySQLDialect
-com.minihibernate.spi.H2Dialect
+org.ltl.minihibernate.spi.MySQLDialect
+org.ltl.minihibernate.spi.H2Dialect
