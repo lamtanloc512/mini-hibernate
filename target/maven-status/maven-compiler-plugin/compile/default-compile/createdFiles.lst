@@ -1,4 +1,3 @@
-com/minihibernate/example/User.class
 com/minihibernate/metadata/FieldMetadata.class
 com/minihibernate/metadata/EntityMetadata$Builder.class
 com/minihibernate/annotation/GenerationType.class
