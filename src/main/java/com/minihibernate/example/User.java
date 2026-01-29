@@ -15,13 +15,13 @@ public class User {
     @GeneratedValue
     private Long id;
     
-    @Column(name = "user_name", nullable = false, length = 100)
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
     
     @Column(unique = true, nullable = false)
     private String email;
     
-    @Column
+    @Column(name = "age")
     private Integer age;
     
     // Default constructor required for ORM

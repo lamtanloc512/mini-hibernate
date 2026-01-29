@@ -15,6 +15,9 @@ Dự án học tập để hiểu sâu về cách Hibernate/JPA hoạt động b
 | [docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md) | Hướng dẫn học tập từng bước |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc và diagrams |
 | [docs/KNOWLEDGE_REQUIREMENTS.md](docs/KNOWLEDGE_REQUIREMENTS.md) | Kiến thức cần có |
+| [docs/EZYDATA_COMPARISON.md](docs/EZYDATA_COMPARISON.md) | So sánh EzyData vs Hibernate |
+| [docs/HIBERNATE_SPRINGBOOT_GUIDE.md](docs/HIBERNATE_SPRINGBOOT_GUIDE.md) | 🔥 Hibernate trong Spring Boot |
+| [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) | 🗺️ Roadmap triển khai |
 
 ## 🚀 Quick Start
 
