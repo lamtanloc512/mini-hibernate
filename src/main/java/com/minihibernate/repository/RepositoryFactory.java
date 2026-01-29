@@ -1,22 +1,24 @@
 package com.minihibernate.repository;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Optional;
+
+import com.minihibernate.annotation.Query;
 import com.minihibernate.api.MiniEntityManager;
 import com.minihibernate.api.MiniEntityManagerFactory;
 import com.minihibernate.metadata.EntityMetadata;
 import com.minihibernate.metadata.FieldMetadata;
 import com.minihibernate.metadata.MetadataParser;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Proxy;
-import java.lang.reflect.Type;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import io.vavr.collection.List;
+import io.vavr.control.Try;
 
 /**
  * Creates proxy instances for repository interfaces.
@@ -44,7 +46,6 @@ public class RepositoryFactory {
    */
   @SuppressWarnings("unchecked")
   public <T extends MiniRepository<?, ?>> T createRepository(Class<T> repositoryInterface) {
-    // Extract entity class from generic type
     Class<?> entityClass = extractEntityClass(repositoryInterface);
     EntityMetadata metadata = metadataParser.parse(entityClass);
 
@@ -55,14 +56,14 @@ public class RepositoryFactory {
   }
 
   private Class<?> extractEntityClass(Class<?> repositoryInterface) {
-    for (Type type : repositoryInterface.getGenericInterfaces()) {
-      if (type instanceof ParameterizedType pt) {
-        if (pt.getRawType() == MiniRepository.class) {
-          return (Class<?>) pt.getActualTypeArguments()[0];
-        }
-      }
-    }
-    throw new IllegalArgumentException("Cannot extract entity class from " + repositoryInterface);
+    return List.of(repositoryInterface.getGenericInterfaces())
+        .filter(t -> t instanceof ParameterizedType)
+        .map(t -> (ParameterizedType) t)
+        .filter(pt -> pt.getRawType() == MiniRepository.class)
+        .headOption()
+        .map(pt -> (Class<?>) pt.getActualTypeArguments()[0])
+        .getOrElseThrow(() -> new IllegalArgumentException(
+            "Cannot extract entity class from " + repositoryInterface));
   }
 
   /**
@@ -80,17 +81,14 @@ public class RepositoryFactory {
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-      // Check if method has @Query annotation
       Query queryAnnotation = method.getAnnotation(Query.class);
 
       if (queryAnnotation != null) {
         return executeQuery(queryAnnotation.value(), method, args);
       }
 
-      // Handle standard MiniRepository methods
       String methodName = method.getName();
 
-      // Handle void methods separately
       if ("deleteById".equals(methodName)) {
         executeDeleteById(args[0]);
         return null;
@@ -102,138 +100,146 @@ public class RepositoryFactory {
         case "findAll" -> executeFindAll();
         case "existsById" -> executeExistsById(args[0]);
         case "count" -> executeCount();
-        case "toString" -> repositoryInterface().getSimpleName() + "@proxy";
+        case "toString" -> entityClass.getSimpleName() + "Repository@proxy";
         case "hashCode" -> System.identityHashCode(proxy);
         case "equals" -> proxy == args[0];
-        default -> throw new UnsupportedOperationException(
-            "Method not implemented: " + method.getName());
+        default -> throw new UnsupportedOperationException("Method not implemented: " + methodName);
       };
     }
 
-    private Class<?> repositoryInterface() {
-      return entityClass;
+    /**
+     * Executes a custom @Query using Vavr Try for clean error handling.
+     */
+    private Object executeQuery(String sql, Method method, Object[] args) {
+      String processedSql = processQueryParams(sql, args);
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> executeAndMapQuery(em, processedSql, method, args))
+          .getOrElseThrow(e -> new RuntimeException("Query execution failed", e));
     }
 
-    /**
-     * Executes a custom @Query.
-     */
-    private Object executeQuery(String sql, Method method, Object[] args) throws Exception {
-      // Replace ?1, ?2, etc. with actual ? placeholders
-      String processedSql = sql;
+    private String processQueryParams(String sql, Object[] args) {
+      String result = sql;
       for (int i = 1; i <= (args != null ? args.length : 0); i++) {
-        processedSql = processedSql.replace("?" + i, "?");
+        result = result.replace("?" + i, "?");
       }
+      return result;
+    }
 
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        Connection conn = em.unwrap(Connection.class);
+    private Object executeAndMapQuery(MiniEntityManager em, String sql, Method method, Object[] args)
+        throws Exception {
+      Connection conn = em.unwrap(Connection.class);
 
-        try (PreparedStatement ps = conn.prepareStatement(processedSql)) {
-          // Set parameters
-          if (args != null) {
-            for (int i = 0; i < args.length; i++) {
-              ps.setObject(i + 1, args[i]);
-            }
-          }
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        setParameters(ps, args);
 
-          try (ResultSet rs = ps.executeQuery()) {
-            Class<?> returnType = method.getReturnType();
-
-            // Return type is List
-            if (List.class.isAssignableFrom(returnType)) {
-              List<Object> results = new ArrayList<>();
-              while (rs.next()) {
-                results.add(mapResultSet(rs));
-              }
-              return results;
-            }
-
-            // Return type is Optional
-            if (returnType == Optional.class) {
-              if (rs.next()) {
-                return Optional.of(mapResultSet(rs));
-              }
-              return Optional.empty();
-            }
-
-            // Return single entity
-            if (rs.next()) {
-              return mapResultSet(rs);
-            }
-            return null;
-          }
+        try (ResultSet rs = ps.executeQuery()) {
+          return mapResultsByReturnType(rs, method.getReturnType());
         }
       }
     }
 
-    private Object executeSave(Object entity) throws Exception {
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        em.getTransaction().begin();
-        em.persist(entity);
-        em.getTransaction().commit();
-        return entity;
+    private void setParameters(PreparedStatement ps, Object[] args) throws Exception {
+      if (args != null) {
+        for (int i = 0; i < args.length; i++) {
+          ps.setObject(i + 1, args[i]);
+        }
       }
     }
 
-    private Optional<Object> executeFindById(Object id) throws Exception {
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        Object result = em.find(entityClass, id);
-        return Optional.ofNullable(result);
-      }
-    }
-
-    private List<Object> executeFindAll() throws Exception {
-      String sql = "SELECT * FROM " + metadata.getTableName();
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        Connection conn = em.unwrap(Connection.class);
-        List<Object> results = new ArrayList<>();
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery()) {
-          while (rs.next()) {
-            results.add(mapResultSet(rs));
-          }
+    private Object mapResultsByReturnType(ResultSet rs, Class<?> returnType) throws Exception {
+      // Return type is List
+      if (java.util.List.class.isAssignableFrom(returnType)) {
+        java.util.List<Object> results = new ArrayList<>();
+        while (rs.next()) {
+          results.add(mapResultSet(rs));
         }
         return results;
       }
-    }
 
-    private void executeDeleteById(Object id) throws Exception {
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        em.getTransaction().begin();
-        Object entity = em.find(entityClass, id);
-        if (entity != null) {
-          em.remove(entity);
-        }
-        em.getTransaction().commit();
+      // Return type is Optional
+      if (returnType == Optional.class) {
+        return rs.next() ? Optional.of(mapResultSet(rs)) : Optional.empty();
       }
+
+      // Return single entity
+      return rs.next() ? mapResultSet(rs) : null;
     }
 
-    private boolean executeExistsById(Object id) throws Exception {
+    private Object executeSave(Object entity) {
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            em.getTransaction().begin();
+            em.persist(entity);
+            em.getTransaction().commit();
+            return entity;
+          })
+          .getOrElseThrow(e -> new RuntimeException("Save failed", e));
+    }
+
+    private Optional<Object> executeFindById(Object id) {
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .<Optional<Object>>of(em -> Optional.ofNullable(em.find(entityClass, id)))
+          .getOrElseThrow(e -> new RuntimeException("FindById failed", e));
+    }
+
+    private java.util.List<Object> executeFindAll() {
+      String sql = "SELECT * FROM " + metadata.getTableName();
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            Connection conn = em.unwrap(Connection.class);
+            java.util.List<Object> results = new ArrayList<>();
+
+            try (PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+              while (rs.next()) {
+                results.add(mapResultSet(rs));
+              }
+            }
+            return results;
+          })
+          .getOrElseThrow(e -> new RuntimeException("FindAll failed", e));
+    }
+
+    private void executeDeleteById(Object id) {
+      Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            em.getTransaction().begin();
+            Object entity = em.find(entityClass, id);
+            if (entity != null) {
+              em.remove(entity);
+            }
+            em.getTransaction().commit();
+            return null;
+          })
+          .getOrElseThrow(e -> new RuntimeException("DeleteById failed", e));
+    }
+
+    private boolean executeExistsById(Object id) {
       return executeFindById(id).isPresent();
     }
 
-    private long executeCount() throws Exception {
+    private long executeCount() {
       String sql = "SELECT COUNT(*) FROM " + metadata.getTableName();
-      try (MiniEntityManager em = emFactory.createEntityManager()) {
-        Connection conn = em.unwrap(Connection.class);
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery()) {
-          if (rs.next()) {
-            return rs.getLong(1);
-          }
-        }
-      }
-      return 0;
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            Connection conn = em.unwrap(Connection.class);
+            try (PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+              return rs.next() ? rs.getLong(1) : 0L;
+            }
+          })
+          .getOrElseThrow(e -> new RuntimeException("Count failed", e));
     }
 
     private Object mapResultSet(ResultSet rs) throws Exception {
       Object entity = metadata.newInstance();
 
       for (FieldMetadata field : metadata.getAllColumns()) {
-        String columnName = field.getColumnName();
-        Object value = rs.getObject(columnName);
-        value = convertType(value, field.getJavaType());
-        field.setValue(entity, value);
+        Object value = rs.getObject(field.getColumnName());
+        field.setValue(entity, convertType(value, field.getJavaType()));
       }
 
       return entity;
@@ -243,12 +249,11 @@ public class RepositoryFactory {
       if (value == null)
         return null;
 
-      if (targetType == Long.class || targetType == long.class) {
-        if (value instanceof Number)
-          return ((Number) value).longValue();
-      } else if (targetType == Integer.class || targetType == int.class) {
-        if (value instanceof Number)
-          return ((Number) value).intValue();
+      if (value instanceof Number num) {
+        if (targetType == Long.class || targetType == long.class)
+          return num.longValue();
+        if (targetType == Integer.class || targetType == int.class)
+          return num.intValue();
       }
 
       return value;

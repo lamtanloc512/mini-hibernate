@@ -1,7 +1,7 @@
 package com.minihibernate.example;
 
+import com.minihibernate.annotation.Query;
 import com.minihibernate.repository.MiniRepository;
-import com.minihibernate.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
