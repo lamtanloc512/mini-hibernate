@@ -1,4 +1,4 @@
-package com.minihibernate;
+package com.minihibernate.demo;
 
 import java.sql.Connection;
 

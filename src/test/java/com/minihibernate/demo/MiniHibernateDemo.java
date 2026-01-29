@@ -1,4 +1,4 @@
-package com.minihibernate;
+package com.minihibernate.demo;
 
 import com.minihibernate.example.User;
 import com.minihibernate.session.MiniSession;

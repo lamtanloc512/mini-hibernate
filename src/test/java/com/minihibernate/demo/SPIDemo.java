@@ -1,6 +1,8 @@
-package com.minihibernate.spi;
+package com.minihibernate.demo;
 
 import java.util.ServiceLoader;
+
+import com.minihibernate.spi.Dialect;
 
 /**
  * Demo showing how SPI (Service Provider Interface) works.

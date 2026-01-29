@@ -1,4 +1,4 @@
-package com.minihibernate;
+package com.minihibernate.demo;
 
 import com.minihibernate.api.MiniEntityManager;
 import com.minihibernate.api.MiniEntityManagerFactory;
