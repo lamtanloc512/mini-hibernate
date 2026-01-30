@@ -17,18 +17,33 @@ import jakarta.persistence.TemporalType;
 
 public class MiniNativeQueryImpl implements Query {
 
-  private final String sql;
-  private final Connection connection;
-  private final List<Object> parameters = new ArrayList<>();
+  protected final String sql;
+  protected final Connection connection;
+  protected final List<Object> parameters = new ArrayList<>();
 
   public MiniNativeQueryImpl(String sql, Connection connection) {
     this.sql = sql;
     this.connection = connection;
   }
 
+  protected Connection getConnection() {
+    return connection;
+  }
+
+  protected String getSql() {
+    return sql;
+  }
+
+  protected String getJdbcSql() {
+    // Replace ?1, ?2, etc. with ?
+    return sql.replaceAll("\\?\\d+", "?");
+  }
+
+
   @Override
   public List<Object[]> getResultList() {
-    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+    String jdbcSql = getJdbcSql();
+    try (PreparedStatement stmt = connection.prepareStatement(jdbcSql)) {
       for (int i = 0; i < parameters.size(); i++) {
         stmt.setObject(i + 1, parameters.get(i));
       }
@@ -59,7 +74,8 @@ public class MiniNativeQueryImpl implements Query {
 
   @Override
   public int executeUpdate() {
-    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+    String jdbcSql = getJdbcSql();
+    try (PreparedStatement stmt = connection.prepareStatement(jdbcSql)) {
       for (int i = 0; i < parameters.size(); i++) {
         stmt.setObject(i + 1, parameters.get(i));
       }
@@ -109,7 +125,10 @@ public class MiniNativeQueryImpl implements Query {
 
   @Override
   public <T> Query setParameter(Parameter<T> param, T value) {
-    throw new UnsupportedOperationException();
+    if (param.getPosition() != null) {
+      return setParameter(param.getPosition(), value);
+    }
+    throw new UnsupportedOperationException("Named parameters not supported in native queries");
   }
 
   @Override
@@ -155,26 +174,52 @@ public class MiniNativeQueryImpl implements Query {
 
   @Override
   public Set<Parameter<?>> getParameters() {
-    return java.util.Collections.emptySet();
+    Set<Parameter<?>> result = new java.util.HashSet<>();
+    
+    // 1. Add parameters already set
+    for (int i = 0; i < parameters.size(); i++) {
+        result.add(getParameter(i + 1));
+    }
+    
+    // 2. Scan SQL for positional parameters like ?1, ?2
+    // This is a simple regex-based discovery for Spring Data JPA
+    java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\?(\\d+)");
+    java.util.regex.Matcher m = p.matcher(sql);
+    while (m.find()) {
+        int pos = Integer.parseInt(m.group(1));
+        result.add(getParameter(pos));
+    }
+    
+    return result;
   }
 
   @Override
   public Parameter<?> getParameter(String name) {
-    System.out.println("MiniNativeQueryImpl: getParameter(" + name + ")");
-    throw new UnsupportedOperationException();
+    return new Parameter<Object>() {
+      @Override
+      public String getName() {
+        return name;
+      }
+
+      @Override
+      public Integer getPosition() {
+        return null;
+      }
+
+      @Override
+      public Class<Object> getParameterType() {
+        return Object.class;
+      }
+    };
   }
 
   @Override
   public <T> Parameter<T> getParameter(String name, Class<T> type) {
-    System.out.println("MiniNativeQueryImpl: getParameter(" + name + ", " + type + ")");
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Parameter<?> getParameter(int position) {
-    // Spring Data might check this?
-    // System.out.println("MiniNativeQueryImpl: getParameter(" + position + ")");
-    // throw new UnsupportedOperationException();
     return new Parameter<Object>() {
       @Override
       public String getName() {
@@ -201,6 +246,10 @@ public class MiniNativeQueryImpl implements Query {
 
   @Override
   public boolean isBound(Parameter<?> param) {
+    Integer pos = param.getPosition();
+    if (pos != null && pos > 0 && pos <= parameters.size()) {
+      return parameters.get(pos - 1) != null;
+    }
     return false;
   }
 

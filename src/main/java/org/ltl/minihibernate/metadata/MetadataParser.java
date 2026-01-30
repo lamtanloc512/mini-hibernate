@@ -110,6 +110,8 @@ public class MetadataParser {
     if (manyToOne != null) {
       builder.relationshipType(RelationshipType.MANY_TO_ONE);
       builder.targetEntity(field.getType());
+      builder.fetchType(manyToOne.fetch());
+      builder.isLazy(manyToOne.fetch() == jakarta.persistence.FetchType.LAZY);
       parseJoinColumn(field, builder);
       return;
     }
@@ -120,6 +122,8 @@ public class MetadataParser {
       builder.relationshipType(RelationshipType.ONE_TO_MANY);
       builder.mappedBy(oneToMany.mappedBy());
       builder.targetEntity(extractCollectionType(field));
+      builder.fetchType(oneToMany.fetch());
+      builder.isLazy(oneToMany.fetch() == jakarta.persistence.FetchType.LAZY);
       return;
     }
 
@@ -129,6 +133,8 @@ public class MetadataParser {
       builder.relationshipType(RelationshipType.MANY_TO_MANY);
       builder.mappedBy(manyToMany.mappedBy());
       builder.targetEntity(extractCollectionType(field));
+      builder.fetchType(manyToMany.fetch());
+      builder.isLazy(manyToMany.fetch() == jakarta.persistence.FetchType.LAZY);
       return;
     }
 
@@ -138,6 +144,8 @@ public class MetadataParser {
       builder.relationshipType(RelationshipType.ONE_TO_ONE);
       builder.targetEntity(field.getType());
       builder.mappedBy(oneToOne.mappedBy());
+      builder.fetchType(oneToOne.fetch());
+      builder.isLazy(oneToOne.fetch() == jakarta.persistence.FetchType.LAZY);
       parseJoinColumn(field, builder);
     }
   }

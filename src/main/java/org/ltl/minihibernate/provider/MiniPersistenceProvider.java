@@ -1,6 +1,7 @@
 package org.ltl.minihibernate.provider;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 import org.ltl.minihibernate.internal.MiniEntityManagerFactoryImpl;
@@ -154,16 +155,16 @@ public class MiniPersistenceProvider implements PersistenceProvider, ProviderUti
   }
 
   private void applyProperties(MiniEntityManagerFactoryImpl.Builder builder, Properties props) {
-    Map<?, ?> map = (Map<?, ?>) props; // Cast safely for read-only access or use dedicated method
+    // Cast safely for read-only access or use dedicated method
     // Actually Properties implements Map<Object,Object>, so we can just reuse the
     // Map method
-    applyProperties(builder, (Map<?, ?>) map);
+    applyProperties(builder, (Map<?, ?>) props);
   }
 
   private Option<String> getVal(Map<?, ?> props, String... keys) {
     return io.vavr.collection.List.of(keys)
-        .map(key -> props.get(key))
-        .filter(val -> val != null)
+        .map(props::get)
+        .filter(Objects::nonNull)
         .map(Object::toString)
         .headOption();
   }
@@ -203,7 +204,7 @@ public class MiniPersistenceProvider implements PersistenceProvider, ProviderUti
       providerClassName = ((Class<?>) providerProperty).getName();
     }
 
-    return providerClassName != null && checkMiniProviderClassName(providerClassName);
+    return checkMiniProviderClassName(providerClassName);
   }
 
   private boolean checkMiniProviderClassName(String providerClassName) {

@@ -3,7 +3,7 @@ package org.ltl.minihibernate.internal;
 import org.ltl.minihibernate.api.MiniTypedQuery;
 import org.ltl.minihibernate.metadata.EntityMetadata;
 import org.ltl.minihibernate.metadata.FieldMetadata;
-import org.ltl.minihibernate.query.SimpleJPQLParser;
+import org.ltl.minihibernate.query.EnhancedJPQLParser;
 import org.ltl.minihibernate.session.EntityState;
 import org.ltl.minihibernate.sql.SQLGenerator;
 import io.vavr.collection.List;
@@ -30,7 +30,7 @@ import java.util.stream.Stream;
 /**
  * MiniTypedQueryImpl - Query implementation.
  */
-public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
+public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
 
   private final Class<T> entityClass;
   private final MiniEntityManagerImpl entityManager;
@@ -43,7 +43,7 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   // JPQL state
   private String jpql = null;
-  private Map<String, Object> namedParams = new HashMap<>();
+  private final Map<String, Object> namedParams = new HashMap<>();
 
   // Standard state
   private Integer maxResults = null;
@@ -92,6 +92,7 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
   @Override
   public java.util.List<T> getResultList() {
     String sql = buildSQL();
+    java.util.List<Object> finalParams = getFinalParameters();
 
     return Try.of(() -> {
       java.util.List<T> results = new ArrayList<>();
@@ -99,7 +100,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
       try (PreparedStatement ps = conn.prepareStatement(sql)) {
         // Set parameters
-        java.util.List<Object> finalParams = getFinalParameters();
         for (int i = 0; i < finalParams.size(); i++) {
           ps.setObject(i + 1, finalParams.get(i));
         }
@@ -120,7 +120,7 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   private String buildSQL() {
     if (jpql != null) {
-      SimpleJPQLParser.ParsedQuery pq = SimpleJPQLParser.parse(jpql, metadata);
+      EnhancedJPQLParser.ParsedQuery pq = EnhancedJPQLParser.parse(jpql, metadata);
       String sql = pq.sql;
       if (maxResults != null)
         sql += " LIMIT " + maxResults;
@@ -144,7 +144,7 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   private java.util.List<Object> getFinalParameters() {
     if (jpql != null) {
-      SimpleJPQLParser.ParsedQuery pq = SimpleJPQLParser.parse(jpql, metadata);
+      EnhancedJPQLParser.ParsedQuery pq = EnhancedJPQLParser.parse(jpql, metadata);
       java.util.List<Object> params = new ArrayList<>();
       for (String name : pq.paramNames) {
         if (!namedParams.containsKey(name)) {
@@ -217,12 +217,42 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   @Override
   public Parameter<?> getParameter(String name) {
-    return null;
+    return new Parameter<Object>() {
+      @Override
+      public String getName() {
+        return name;
+      }
+
+      @Override
+      public Integer getPosition() {
+        return null;
+      }
+
+      @Override
+      public Class<Object> getParameterType() {
+        return Object.class;
+      }
+    };
   }
 
   @Override
   public Parameter<?> getParameter(int position) {
-    return null;
+    return new Parameter<Object>() {
+      @Override
+      public String getName() {
+        return null;
+      }
+
+      @Override
+      public Integer getPosition() {
+        return position;
+      }
+
+      @Override
+      public Class<Object> getParameterType() {
+        return Object.class;
+      }
+    };
   }
 
   @Override
@@ -237,7 +267,13 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   @Override
   public boolean isBound(Parameter<?> param) {
-    return true;
+    if (param.getName() != null) {
+      return namedParams.containsKey(param.getName());
+    }
+    if (param.getPosition() != null) {
+      return param.getPosition() <= positionalParams.size() && positionalParams.get(param.getPosition() - 1) != null;
+    }
+    return false;
   }
 
   @Override
@@ -257,7 +293,18 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   @Override
   public Set<Parameter<?>> getParameters() {
-    return null;
+    Set<Parameter<?>> result = new java.util.HashSet<>();
+    if (jpql != null) {
+      EnhancedJPQLParser.ParsedQuery pq = EnhancedJPQLParser.parse(jpql, metadata);
+      for (String name : pq.paramNames) {
+        result.add(getParameter(name));
+      }
+    } else {
+      for (int i = 0; i < positionalParams.size(); i++) {
+        result.add(getParameter(i + 1));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -293,11 +340,21 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
   // Generic <T> definition from interface
   @Override
   public <U> TypedQuery<T> setParameter(Parameter<U> param, U value) {
+    if (param.getName() != null) {
+      return setParameter(param.getName(), value);
+    }
+    if (param.getPosition() != null) {
+      return setParameter(param.getPosition(), value);
+    }
     return this;
   }
 
   @Override
   public TypedQuery<T> setParameter(int position, Object value) {
+    while (positionalParams.size() < position) {
+      positionalParams.add(null);
+    }
+    positionalParams.set(position - 1, value);
     return this;
   }
 
@@ -386,8 +443,8 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T>, TypedQuery<T> {
 
   @Override
   public T getSingleResultOrNull() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getSingleResultOrNull'");
+    java.util.List<T> results = getResultList();
+    return results.isEmpty() ? null : results.get(0);
   }
 
   @Override

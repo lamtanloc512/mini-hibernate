@@ -1,5 +1,6 @@
 package org.ltl.minihibernate.internal;
 
+import java.util.Objects;
 import java.util.Properties;
 
 import org.ltl.minihibernate.api.MiniEntityManager;
@@ -37,11 +38,7 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
   private MiniEntityManagerFactoryImpl(Builder builder) {
     this.properties = HashMap.ofAll(builder.properties).mapKeys(String::valueOf).mapValues(v -> (Object) v);
-    if (builder.dataSource != null) {
-      this.dataSource = builder.dataSource;
-    } else {
-      this.dataSource = createDataSource(builder.properties);
-    }
+    this.dataSource = Objects.requireNonNullElseGet(builder.dataSource, () -> createDataSource(builder.properties));
     this.metadataParser = new MetadataParser();
     this.entityMetadataMap = parseEntities(builder.entityClasses);
   }
@@ -54,7 +51,7 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
   @Override
   public MiniEntityManager createEntityManager() {
     verifyOpen();
-    return Try.of(() -> dataSource.getConnection())
+    return Try.of(dataSource::getConnection)
         .map(conn -> (MiniEntityManager) new MiniEntityManagerImpl(conn, this))
         .getOrElseThrow(e -> new RuntimeException("Failed to create EntityManager", e));
   }
@@ -83,8 +80,7 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
   public synchronized void close() {
     if (open) {
       open = false;
-      if (dataSource instanceof HikariDataSource) {
-        HikariDataSource hds = (HikariDataSource) dataSource;
+      if (dataSource instanceof HikariDataSource hds) {
         if (!hds.isClosed()) {
            hds.close();
         }
@@ -101,6 +97,12 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
   public DataSource getDataSource() {
     return dataSource;
+  }
+
+  public Class<?> getEntityClass(String entityName) {
+    return entityMetadataMap.keySet()
+        .find(clazz -> clazz.getSimpleName().equals(entityName) || clazz.getName().equals(entityName))
+        .getOrNull();
   }
 
   // --- Helpers ---

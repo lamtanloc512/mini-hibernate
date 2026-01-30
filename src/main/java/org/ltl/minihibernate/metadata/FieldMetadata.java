@@ -1,5 +1,6 @@
 package org.ltl.minihibernate.metadata;
 
+import jakarta.persistence.FetchType;
 import java.lang.reflect.Field;
 
 /**
@@ -20,6 +21,8 @@ public class FieldMetadata {
   private final RelationshipType relationshipType;
   private final Class<?> targetEntity;
   private final String mappedBy;
+  private final FetchType fetchType;
+  private final boolean isLazy;
 
   private FieldMetadata(Builder builder) {
     this.field = builder.field;
@@ -32,6 +35,8 @@ public class FieldMetadata {
     this.relationshipType = builder.relationshipType;
     this.targetEntity = builder.targetEntity;
     this.mappedBy = builder.mappedBy;
+    this.fetchType = builder.fetchType;
+    this.isLazy = builder.isLazy;
 
     this.field.setAccessible(true);
   }
@@ -50,9 +55,14 @@ public class FieldMetadata {
   public RelationshipType getRelationshipType() { return relationshipType; }
   public Class<?> getTargetEntity() { return targetEntity; }
   public String getMappedBy() { return mappedBy; }
+  public FetchType getFetchType() { return fetchType; }
+  public boolean isLazy() { return isLazy; }
+  public boolean isEager() { return fetchType == FetchType.EAGER; }
   public boolean isRelationship() { return relationshipType != RelationshipType.NONE; }
   public boolean isManyToOne() { return relationshipType == RelationshipType.MANY_TO_ONE; }
   public boolean isOneToMany() { return relationshipType == RelationshipType.ONE_TO_MANY; }
+  public boolean isOneToOne() { return relationshipType == RelationshipType.ONE_TO_ONE; }
+  public boolean isManyToMany() { return relationshipType == RelationshipType.MANY_TO_MANY; }
 
   public Object getValue(Object entity) {
     try {
@@ -92,6 +102,8 @@ public class FieldMetadata {
     private RelationshipType relationshipType = RelationshipType.NONE;
     private Class<?> targetEntity;
     private String mappedBy = "";
+    private FetchType fetchType = FetchType.EAGER;
+    private boolean isLazy = false;
 
     public Builder(Field field) {
       this.field = field;
@@ -140,6 +152,16 @@ public class FieldMetadata {
 
     public Builder mappedBy(String mappedBy) {
       this.mappedBy = mappedBy;
+      return this;
+    }
+
+    public Builder fetchType(FetchType fetchType) {
+      this.fetchType = fetchType;
+      return this;
+    }
+
+    public Builder isLazy(boolean isLazy) {
+      this.isLazy = isLazy;
       return this;
     }
 

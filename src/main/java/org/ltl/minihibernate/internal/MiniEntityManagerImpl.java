@@ -322,7 +322,27 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public Query createQuery(String qlString) {
-    throw new UnsupportedOperationException();
+    verifyOpen();
+    String entityName = extractEntityName(qlString);
+    if (entityName != null) {
+      Class<?> entityClass = factory.getEntityClass(entityName);
+      if (entityClass != null) {
+        return new MiniTypedQueryImpl<>(qlString, entityClass, this);
+      }
+    }
+    // Fallback or throw informative error
+    throw new IllegalArgumentException("Cannot resolve entity for query: " + qlString);
+  }
+
+  private String extractEntityName(String jpql) {
+    if (jpql == null) return null;
+    // Simple regex to find entity name after FROM
+    java.util.regex.Pattern p = java.util.regex.Pattern.compile("FROM\\s+(\\w+)", java.util.regex.Pattern.CASE_INSENSITIVE);
+    java.util.regex.Matcher m = p.matcher(jpql);
+    if (m.find()) {
+      return m.group(1);
+    }
+    return null;
   }
 
   @Override
@@ -351,14 +371,15 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public Query createNativeQuery(String sqlString) {
+  public Query createNativeQuery(String sql) {
     verifyOpen();
-    return new MiniNativeQueryImpl(sqlString, connection);
+    return new MiniNativeQueryImpl(sql, connection);
   }
 
   @Override
-  public <T> Query createNativeQuery(String sqlString, Class<T> resultClass) {
-    return createNativeQuery(sqlString);
+  public <T> TypedQuery<T> createNativeQuery(String sql, Class<T> resultClass) {
+    verifyOpen();
+    return new TypedNativeQueryImpl<T>(sql, connection, resultClass, this);
   }
 
   @Override
@@ -520,7 +541,11 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   // --- Internals ---
 
-  Connection getConnection() {
+  public MiniEntityManagerFactoryImpl getFactory() {
+    return factory;
+  }
+
+  public Connection getConnection() {
     return connection;
   }
 
