@@ -1,0 +1,21 @@
+# Mini-Hibernate Configuration
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Copy this file to your classpath as 'minihibernate.properties'
+
+# Database Connection
+minihibernate.connection.url=jdbc:mysql://localhost:3306/mydb
+minihibernate.connection.username=root
+minihibernate.connection.password=password
+# minihibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
+
+# Entity Scanning (optional)
+# minihibernate.entity.scan=org.myproject.entity
+
+# SQL Logging
+minihibernate.show_sql=true
+
+# Dialect (auto-detected from URL if not specified)
+# minihibernate.dialect=org.ltl.minihibernate.spi.MySQLDialect
+
+# Connection Pool
+# minihibernate.connection.pool_size=10

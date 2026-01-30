@@ -4,8 +4,7 @@ import java.lang.reflect.Field;
 
 /**
  * Holds metadata about a mapped field/column.
- * 
- * This class stores information extracted from @Column and @Id annotations.
+ * Supports both regular columns and relationship mappings.
  */
 public class FieldMetadata {
 
@@ -16,6 +15,11 @@ public class FieldMetadata {
   private final boolean nullable;
   private final int length;
   private final boolean unique;
+  
+  // Relationship fields
+  private final RelationshipType relationshipType;
+  private final Class<?> targetEntity;
+  private final String mappedBy;
 
   private FieldMetadata(Builder builder) {
     this.field = builder.field;
@@ -25,50 +29,31 @@ public class FieldMetadata {
     this.nullable = builder.nullable;
     this.length = builder.length;
     this.unique = builder.unique;
+    this.relationshipType = builder.relationshipType;
+    this.targetEntity = builder.targetEntity;
+    this.mappedBy = builder.mappedBy;
 
-    // Make field accessible for reflection
     this.field.setAccessible(true);
   }
 
-  public Field getField() {
-    return field;
-  }
+  public Field getField() { return field; }
+  public String getFieldName() { return field.getName(); }
+  public String getColumnName() { return columnName; }
+  public Class<?> getJavaType() { return field.getType(); }
+  public boolean isId() { return isId; }
+  public boolean isGeneratedValue() { return isGeneratedValue; }
+  public boolean isNullable() { return nullable; }
+  public int getLength() { return length; }
+  public boolean isUnique() { return unique; }
+  
+  // Relationship getters
+  public RelationshipType getRelationshipType() { return relationshipType; }
+  public Class<?> getTargetEntity() { return targetEntity; }
+  public String getMappedBy() { return mappedBy; }
+  public boolean isRelationship() { return relationshipType != RelationshipType.NONE; }
+  public boolean isManyToOne() { return relationshipType == RelationshipType.MANY_TO_ONE; }
+  public boolean isOneToMany() { return relationshipType == RelationshipType.ONE_TO_MANY; }
 
-  public String getFieldName() {
-    return field.getName();
-  }
-
-  public String getColumnName() {
-    return columnName;
-  }
-
-  public Class<?> getJavaType() {
-    return field.getType();
-  }
-
-  public boolean isId() {
-    return isId;
-  }
-
-  public boolean isGeneratedValue() {
-    return isGeneratedValue;
-  }
-
-  public boolean isNullable() {
-    return nullable;
-  }
-
-  public int getLength() {
-    return length;
-  }
-
-  public boolean isUnique() {
-    return unique;
-  }
-
-  /**
-   * Gets the value of this field from the given entity.
-   */
   public Object getValue(Object entity) {
     try {
       return field.get(entity);
@@ -77,9 +62,6 @@ public class FieldMetadata {
     }
   }
 
-  /**
-   * Sets the value of this field on the given entity.
-   */
   public void setValue(Object entity, Object value) {
     try {
       field.set(entity, value);
@@ -90,12 +72,9 @@ public class FieldMetadata {
 
   @Override
   public String toString() {
-    return "FieldMetadata{" +
-        "field=" + field.getName() +
-        ", columnName='" + columnName + '\'' +
-        ", isId=" + isId +
-        ", javaType=" + getJavaType().getSimpleName() +
-        '}';
+    String rel = relationshipType != RelationshipType.NONE ? ", relationship=" + relationshipType : "";
+    return "FieldMetadata{field=" + field.getName() + ", columnName='" + columnName + "'" +
+        ", isId=" + isId + rel + "}";
   }
 
   public static Builder builder(Field field) {
@@ -110,10 +89,13 @@ public class FieldMetadata {
     private boolean nullable = true;
     private int length = 255;
     private boolean unique = false;
+    private RelationshipType relationshipType = RelationshipType.NONE;
+    private Class<?> targetEntity;
+    private String mappedBy = "";
 
     public Builder(Field field) {
       this.field = field;
-      this.columnName = field.getName(); // default to field name
+      this.columnName = field.getName();
     }
 
     public Builder columnName(String columnName) {
@@ -143,6 +125,21 @@ public class FieldMetadata {
 
     public Builder unique(boolean unique) {
       this.unique = unique;
+      return this;
+    }
+
+    public Builder relationshipType(RelationshipType type) {
+      this.relationshipType = type;
+      return this;
+    }
+
+    public Builder targetEntity(Class<?> entityClass) {
+      this.targetEntity = entityClass;
+      return this;
+    }
+
+    public Builder mappedBy(String mappedBy) {
+      this.mappedBy = mappedBy;
       return this;
     }
 

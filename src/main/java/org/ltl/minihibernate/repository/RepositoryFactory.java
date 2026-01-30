@@ -16,6 +16,10 @@ import org.ltl.minihibernate.api.MiniEntityManagerFactory;
 import org.ltl.minihibernate.metadata.EntityMetadata;
 import org.ltl.minihibernate.metadata.FieldMetadata;
 import org.ltl.minihibernate.metadata.MetadataParser;
+import org.ltl.minihibernate.page.CursorPage;
+import org.ltl.minihibernate.page.CursorPageable;
+import org.ltl.minihibernate.page.Page;
+import org.ltl.minihibernate.page.Pageable;
 
 import io.vavr.collection.List;
 import io.vavr.control.Try;
@@ -92,6 +96,16 @@ public class RepositoryFactory {
       if ("deleteById".equals(methodName)) {
         executeDeleteById(args[0]);
         return null;
+      }
+
+      // Handle findAll with different parameter types
+      if ("findAll".equals(methodName) && args != null && args.length > 0) {
+        if (args[0] instanceof Pageable pageable) {
+          return executeFindAllPaged(pageable);
+        }
+        if (args[0] instanceof CursorPageable cursorPageable) {
+          return executeFindAllCursor(cursorPageable);
+        }
       }
 
       return switch (methodName) {
@@ -232,6 +246,93 @@ public class RepositoryFactory {
             }
           })
           .getOrElseThrow(e -> new RuntimeException("Count failed", e));
+    }
+
+    // ==================== Pagination Methods ====================
+
+    @SuppressWarnings("unchecked")
+    private Page<Object> executeFindAllPaged(Pageable pageable) {
+      String idColumn = metadata.getIdField().getColumnName();
+      StringBuilder sql = new StringBuilder()
+          .append("SELECT * FROM ").append(metadata.getTableName());
+
+      // Add ORDER BY
+      if (pageable.getSort() != null) {
+        sql.append(" ORDER BY ").append(pageable.getSort().toSql());
+      } else {
+        sql.append(" ORDER BY ").append(idColumn);
+      }
+
+      // Add LIMIT and OFFSET
+      sql.append(" LIMIT ").append(pageable.getPageSize())
+          .append(" OFFSET ").append(pageable.getOffset());
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            Connection conn = em.unwrap(Connection.class);
+            java.util.List<Object> results = new ArrayList<>();
+
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString());
+                ResultSet rs = ps.executeQuery()) {
+              while (rs.next()) {
+                results.add(mapResultSet(rs));
+              }
+            }
+
+            long total = executeCount();
+            return new Page<>(results, pageable, total);
+          })
+          .getOrElseThrow(e -> new RuntimeException("FindAllPaged failed", e));
+    }
+
+    @SuppressWarnings("unchecked")
+    private CursorPage<Object> executeFindAllCursor(CursorPageable cursorPageable) {
+      String idColumn = metadata.getIdField().getColumnName();
+      StringBuilder sql = new StringBuilder()
+          .append("SELECT * FROM ").append(metadata.getTableName());
+
+      // Add cursor condition
+      if (cursorPageable.hasCursor()) {
+        String operator = cursorPageable.isForward() ? ">" : "<";
+        sql.append(" WHERE ").append(idColumn).append(" ").append(operator).append(" ?");
+      }
+
+      // Add ORDER BY
+      sql.append(" ORDER BY ").append(idColumn);
+      if (!cursorPageable.isForward()) {
+        sql.append(" DESC");
+      }
+
+      // Fetch one extra to determine if there's more
+      sql.append(" LIMIT ").append(cursorPageable.getSize() + 1);
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            Connection conn = em.unwrap(Connection.class);
+            java.util.List<Object> results = new ArrayList<>();
+
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+              if (cursorPageable.hasCursor()) {
+                ps.setObject(1, cursorPageable.getCursor());
+              }
+
+              try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                  results.add(mapResultSet(rs));
+                }
+              }
+            }
+
+            // Check if there are more results
+            boolean hasMore = results.size() > cursorPageable.getSize();
+            if (hasMore) {
+              results.remove(results.size() - 1); // Remove the extra
+            }
+
+            return CursorPage.of(results, cursorPageable,
+                entity -> metadata.getId(entity), hasMore);
+          })
+          .getOrElseThrow(e -> new RuntimeException("FindAllCursor failed", e));
     }
 
     private Object mapResultSet(ResultSet rs) throws Exception {

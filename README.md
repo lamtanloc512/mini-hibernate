@@ -29,6 +29,7 @@ org.ltl.minihibernate/
 ## 🏗️ Architecture & Design Patterns
 
 ### 1. `annotation/` - Entity Mapping
+
 **Purpose:** Define how Java classes map to database tables.
 
 ```java
@@ -37,7 +38,7 @@ public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(name = "user_name")
     private String name;
 }
@@ -48,16 +49,18 @@ public class User {
 ---
 
 ### 2. `api/` - Public Interfaces (Facade Pattern)
+
 **Purpose:** Define the contract users code against.
 
-| Interface | Description |
-|-----------|-------------|
-| `MiniEntityManager` | Main entry point for CRUD operations |
+| Interface                  | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
+| `MiniEntityManager`        | Main entry point for CRUD operations                     |
 | `MiniEntityManagerFactory` | Creates EntityManager instances (expensive, create once) |
-| `MiniTransaction` | Transaction control |
-| `MiniTypedQuery<T>` | Type-safe query interface |
+| `MiniTransaction`          | Transaction control                                      |
+| `MiniTypedQuery<T>`        | Type-safe query interface                                |
 
 **Why Interfaces?**
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  User Code                                                  │
@@ -76,6 +79,7 @@ public class User {
 ```
 
 **Benefits:**
+
 - Implementation can change without breaking user code
 - Easier to add caching, logging, proxying
 - Same pattern used by JPA/Hibernate
@@ -83,16 +87,18 @@ public class User {
 ---
 
 ### 3. `internal/` - Hidden Implementations
+
 **Purpose:** Contains the actual implementation code.
 
-| Class | Implements |
-|-------|-----------|
-| `MiniEntityManagerImpl` | `MiniEntityManager` |
+| Class                          | Implements                 |
+| ------------------------------ | -------------------------- |
+| `MiniEntityManagerImpl`        | `MiniEntityManager`        |
 | `MiniEntityManagerFactoryImpl` | `MiniEntityManagerFactory` |
-| `MiniTransactionImpl` | `MiniTransaction` |
-| `MiniTypedQueryImpl` | `MiniTypedQuery` |
+| `MiniTransactionImpl`          | `MiniTransaction`          |
+| `MiniTypedQueryImpl`           | `MiniTypedQuery`           |
 
 **Why Hide?**
+
 - Users don't need to know implementation details
 - Can swap implementations (e.g., different database support)
 - Prevents coupling to internal classes
@@ -100,6 +106,7 @@ public class User {
 ---
 
 ### 4. `metadata/` - Entity Metadata Parsing
+
 **Purpose:** Parse annotations using Reflection to understand entity structure.
 
 ```java
@@ -113,6 +120,7 @@ metadata.getColumns();        // all mapped columns
 ```
 
 **Key Classes:**
+
 - `MetadataParser` - Parses @Entity, @Id, @Column annotations
 - `EntityMetadata` - Holds parsed table/entity info
 - `FieldMetadata` - Holds per-field mapping info
@@ -143,6 +151,7 @@ metadata.getColumns();        // all mapped columns
 ```
 
 **Key Features:**
+
 - **Identity Map:** Same ID → Same instance (no duplicates)
 - **Dirty Checking:** Compare current vs snapshot → auto UPDATE
 - **Action Queues:** Batch INSERT/DELETE on flush()
@@ -156,15 +165,16 @@ metadata.getColumns();        // all mapped columns
 ```java
 try (MiniSession session = factory.openSession()) {
     MiniTransaction tx = session.beginTransaction();
-    
+
     session.persist(user);
     session.find(User.class, 1L);  // May hit cache
-    
+
     tx.commit();  // Flushes all changes to DB
 }
 ```
 
 **Pattern:** Session-per-Request
+
 - One Session per HTTP request/thread
 - SessionFactory is expensive (connection pool) → create once
 - Session is cheap → create per request
@@ -172,14 +182,15 @@ try (MiniSession session = factory.openSession()) {
 ---
 
 ### 7. `repository/` - Spring Data @Query Pattern
+
 **Purpose:** Define queries via annotations on interface methods.
 
 ```java
 public interface UserRepository extends MiniRepository<User, Long> {
-    
+
     @Query("SELECT * FROM users WHERE email = ?1")
     Optional<User> findByEmail(String email);
-    
+
     @Query("SELECT * FROM users WHERE age BETWEEN ?1 AND ?2")
     List<User> findByAgeBetween(int min, int max);
 }
@@ -190,6 +201,7 @@ repo.findByEmail("test@example.com");  // Executes SQL automatically!
 ```
 
 **How it works:** Java Dynamic Proxy
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  UserRepository interface (no implementation!)              │
@@ -214,6 +226,7 @@ repo.findByEmail("test@example.com");  // Executes SQL automatically!
 ---
 
 ### 8. `spi/` - Database Dialect (SPI Pattern)
+
 **Purpose:** Abstract database-specific SQL differences.
 
 ```java
@@ -225,6 +238,7 @@ public interface Dialect {
 ```
 
 **Implementations:**
+
 - `MySQLDialect` - MySQL specific
 - `H2Dialect` - H2 specific
 
@@ -233,6 +247,7 @@ public interface Dialect {
 ---
 
 ### 9. `sql/` - SQL Generation
+
 **Purpose:** Generate SQL statements from metadata.
 
 ```java
@@ -258,11 +273,11 @@ MiniEntityManagerFactory factory = MiniEntityManagerFactoryImpl.builder()
 // 2. Use EntityManager (per request)
 try (MiniEntityManager em = factory.createEntityManager()) {
     em.getTransaction().begin();
-    
+
     User user = new User();
     user.setName("John");
     em.persist(user);
-    
+
     em.getTransaction().commit();
 }
 
@@ -274,26 +289,202 @@ userRepo.findByEmail("john@example.com");
 
 ## 📚 Documentation
 
-| File | Description |
-|------|-------------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed architecture diagrams |
-| [docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md) | Step-by-step learning guide |
-| [docs/HIBERNATE_SPRINGBOOT_GUIDE.md](docs/HIBERNATE_SPRINGBOOT_GUIDE.md) | Hibernate in Spring Boot |
+| File                                                                     | Description                    |
+| ------------------------------------------------------------------------ | ------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                             | Detailed architecture diagrams |
+| [docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md)                         | Step-by-step learning guide    |
+| [docs/HIBERNATE_SPRINGBOOT_GUIDE.md](docs/HIBERNATE_SPRINGBOOT_GUIDE.md) | Hibernate in Spring Boot       |
 
 ## ✅ Implemented Features
 
-| Feature | Status |
-|---------|--------|
-| Entity annotations (@Entity, @Id, @Column) | ✅ |
-| Metadata parsing (Reflection) | ✅ |
-| Session/EntityManager | ✅ |
-| Transaction management | ✅ |
-| First-level cache (Identity Map) | ✅ |
-| Dirty checking | ✅ |
-| Query builder | ✅ |
-| @Query annotation (Dynamic Proxy) | ✅ |
-| Database dialect (SPI) | ✅ |
-| Repository pattern | ✅ |
+| Feature                                    | Status |
+| ------------------------------------------ | ------ |
+| Entity annotations (@Entity, @Id, @Column) | ✅     |
+| Metadata parsing (Reflection)              | ✅     |
+| Session/EntityManager                      | ✅     |
+| Transaction management                     | ✅     |
+| First-level cache (Identity Map)           | ✅     |
+| Dirty checking                             | ✅     |
+| Query builder                              | ✅     |
+| @Query annotation (Dynamic Proxy)          | ✅     |
+| Database dialect (SPI)                     | ✅     |
+| Repository pattern                         | ✅     |
+
+---
+
+## 🔧 Framework Integration
+
+### Plain Java (Standalone)
+
+```java
+import org.ltl.minihibernate.api.*;
+import org.ltl.minihibernate.internal.MiniEntityManagerFactoryImpl;
+import org.ltl.minihibernate.repository.RepositoryFactory;
+
+public class App {
+    public static void main(String[] args) {
+        // Initialize once at startup
+        var factory = MiniEntityManagerFactoryImpl.builder()
+            .url("jdbc:mysql://localhost:3306/mydb")
+            .username("root")
+            .password("password")
+            .addEntityClass(User.class)
+            .build();
+        
+        // Use EntityManager
+        try (var em = factory.createEntityManager()) {
+            em.getTransaction().begin();
+            em.persist(new User("John", "john@example.com"));
+            em.getTransaction().commit();
+        }
+        
+        // Or use Repository
+        var repoFactory = new RepositoryFactory(factory);
+        var userRepo = repoFactory.createRepository(UserRepository.class);
+        userRepo.findByEmail("john@example.com");
+        
+        factory.close();
+    }
+}
+```
+
+---
+
+### Spring Boot Integration
+
+**1. Configuration class:**
+```java
+@Configuration
+public class MiniHibernateConfig {
+
+    @Value("${spring.datasource.url}")
+    private String url;
+    
+    @Value("${spring.datasource.username}")
+    private String username;
+    
+    @Value("${spring.datasource.password}")
+    private String password;
+
+    @Bean
+    public MiniEntityManagerFactory miniEntityManagerFactory() {
+        return MiniEntityManagerFactoryImpl.builder()
+            .url(url)
+            .username(username)
+            .password(password)
+            .addEntityClass(User.class)
+            .build();
+    }
+    
+    @Bean
+    public UserRepository userRepository(MiniEntityManagerFactory factory) {
+        return new RepositoryFactory(factory).createRepository(UserRepository.class);
+    }
+}
+```
+
+**2. Use in service:**
+```java
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository userRepository;
+    
+    public Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+}
+```
+
+---
+
+### Quarkus Integration
+
+```java
+@ApplicationScoped
+public class MiniHibernateProducer {
+
+    @ConfigProperty(name = "quarkus.datasource.jdbc.url")
+    String url;
+    
+    @ConfigProperty(name = "quarkus.datasource.username")
+    String username;
+    
+    @ConfigProperty(name = "quarkus.datasource.password")
+    String password;
+
+    private MiniEntityManagerFactory factory;
+
+    @PostConstruct
+    void init() {
+        factory = MiniEntityManagerFactoryImpl.builder()
+            .url(url).username(username).password(password)
+            .addEntityClass(User.class)
+            .build();
+    }
+
+    @Produces @ApplicationScoped
+    public UserRepository userRepository() {
+        return new RepositoryFactory(factory).createRepository(UserRepository.class);
+    }
+
+    @PreDestroy
+    void cleanup() { factory.close(); }
+}
+```
+
+---
+
+### Micronaut Integration
+
+```java
+@Factory
+public class MiniHibernateFactory {
+
+    @Value("${datasource.url}")
+    private String url;
+    
+    @Value("${datasource.username}")
+    private String username;
+    
+    @Value("${datasource.password}")
+    private String password;
+
+    @Singleton
+    public MiniEntityManagerFactory entityManagerFactory() {
+        return MiniEntityManagerFactoryImpl.builder()
+            .url(url).username(username).password(password)
+            .addEntityClass(User.class)
+            .build();
+    }
+    
+    @Singleton
+    public UserRepository userRepository(MiniEntityManagerFactory factory) {
+        return new RepositoryFactory(factory).createRepository(UserRepository.class);
+    }
+}
+```
+
+---
+
+## 🧪 Benchmarks
+
+```bash
+mvn test-compile exec:java \
+  -Dexec.mainClass="org.ltl.minihibernate.benchmark.SimpleBenchmark" \
+  -Dexec.classpathScope=test -q
+```
+
+Sample results:
+```
+Operation                               Avg (µs)      Ops/sec
+------------------------------------------------------------
+findById(1L)                               22.19        45,063
+findAll()                                  14.55        68,751
+count()                                     6.09       164,173
+@Query: findByEmail                        13.38        74,765
+save + delete                              56.83        17,597
+```
 
 ## 🔗 References
 

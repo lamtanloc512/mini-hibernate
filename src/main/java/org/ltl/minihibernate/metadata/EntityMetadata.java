@@ -6,9 +6,7 @@ import java.util.List;
 
 /**
  * Holds metadata about a mapped entity class.
- * 
- * This class stores information extracted from @Entity annotation
- * and aggregates all field metadata.
+ * Stores information from @Entity, @Table, plus field and relationship metadata.
  */
 public class EntityMetadata {
 
@@ -16,29 +14,21 @@ public class EntityMetadata {
   private final String tableName;
   private final FieldMetadata idField;
   private final List<FieldMetadata> columns;
+  private final List<FieldMetadata> relationships;
 
   private EntityMetadata(Builder builder) {
     this.entityClass = builder.entityClass;
     this.tableName = builder.tableName;
     this.idField = builder.idField;
     this.columns = Collections.unmodifiableList(new ArrayList<>(builder.columns));
+    this.relationships = Collections.unmodifiableList(new ArrayList<>(builder.relationships));
   }
 
-  public Class<?> getEntityClass() {
-    return entityClass;
-  }
+  public Class<?> getEntityClass() { return entityClass; }
+  public String getTableName() { return tableName; }
+  public FieldMetadata getIdField() { return idField; }
 
-  public String getTableName() {
-    return tableName;
-  }
-
-  public FieldMetadata getIdField() {
-    return idField;
-  }
-
-  /**
-   * Returns all columns including the ID field.
-   */
+  /** All columns including ID (excludes relationships). */
   public List<FieldMetadata> getAllColumns() {
     List<FieldMetadata> all = new ArrayList<>();
     all.add(idField);
@@ -46,16 +36,26 @@ public class EntityMetadata {
     return all;
   }
 
-  /**
-   * Returns non-ID columns only.
-   */
-  public List<FieldMetadata> getColumns() {
-    return columns;
+  /** Non-ID columns only (excludes relationships). */
+  public List<FieldMetadata> getColumns() { return columns; }
+
+  /** All relationship fields (@ManyToOne, @OneToMany, etc.). */
+  public List<FieldMetadata> getRelationships() { return relationships; }
+
+  /** Get @ManyToOne relationships only. */
+  public List<FieldMetadata> getManyToOneRelationships() {
+    return relationships.stream()
+        .filter(FieldMetadata::isManyToOne)
+        .toList();
   }
 
-  /**
-   * Creates a new instance of the entity using default constructor.
-   */
+  /** Get @OneToMany relationships only. */
+  public List<FieldMetadata> getOneToManyRelationships() {
+    return relationships.stream()
+        .filter(FieldMetadata::isOneToMany)
+        .toList();
+  }
+
   public Object newInstance() {
     try {
       return entityClass.getDeclaredConstructor().newInstance();
@@ -64,28 +64,14 @@ public class EntityMetadata {
     }
   }
 
-  /**
-   * Gets the ID value from an entity instance.
-   */
-  public Object getId(Object entity) {
-    return idField.getValue(entity);
-  }
-
-  /**
-   * Sets the ID value on an entity instance.
-   */
-  public void setId(Object entity, Object id) {
-    idField.setValue(entity, id);
-  }
+  public Object getId(Object entity) { return idField.getValue(entity); }
+  public void setId(Object entity, Object id) { idField.setValue(entity, id); }
 
   @Override
   public String toString() {
-    return "EntityMetadata{" +
-        "entityClass=" + entityClass.getSimpleName() +
-        ", tableName='" + tableName + '\'' +
-        ", idField=" + idField.getColumnName() +
-        ", columns=" + columns.size() +
-        '}';
+    return "EntityMetadata{entityClass=" + entityClass.getSimpleName() +
+        ", tableName='" + tableName + "', columns=" + columns.size() +
+        ", relationships=" + relationships.size() + "}";
   }
 
   public static Builder builder(Class<?> entityClass) {
@@ -97,6 +83,7 @@ public class EntityMetadata {
     private String tableName;
     private FieldMetadata idField;
     private List<FieldMetadata> columns = new ArrayList<>();
+    private List<FieldMetadata> relationships = new ArrayList<>();
 
     public Builder(Class<?> entityClass) {
       this.entityClass = entityClass;
@@ -115,6 +102,11 @@ public class EntityMetadata {
 
     public Builder addColumn(FieldMetadata column) {
       this.columns.add(column);
+      return this;
+    }
+
+    public Builder addRelationship(FieldMetadata relationship) {
+      this.relationships.add(relationship);
       return this;
     }
 

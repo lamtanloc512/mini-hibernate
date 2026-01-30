@@ -1,62 +1,49 @@
 package org.ltl.minihibernate.metadata;
 
-import org.ltl.minihibernate.annotation.Column;
-import org.ltl.minihibernate.annotation.Entity;
-import org.ltl.minihibernate.annotation.GeneratedValue;
-import org.ltl.minihibernate.annotation.Id;
+import jakarta.persistence.*;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Parses entity classes and extracts metadata from annotations.
+ * Parses entity classes and extracts metadata from JPA annotations.
  * 
- * This is a key component that uses Java Reflection to read
- * @Entity, @Id, @Column, etc. annotations and build EntityMetadata.
+ * Supports:
+ * - @Entity, @Table, @Id, @Column, @GeneratedValue
+ * - @ManyToOne, @OneToMany, @ManyToMany, @OneToOne
+ * - @JoinColumn
  */
 public class MetadataParser {
 
   private final Map<Class<?>, EntityMetadata> cache = new HashMap<>();
 
-  /**
-   * Parses an entity class and returns its metadata.
-   * Results are cached for performance.
-   * 
-   * @param entityClass The class to parse
-   * @return EntityMetadata containing all mapping information
-   * @throws IllegalArgumentException if class is not a valid entity
-   */
   public EntityMetadata parse(Class<?> entityClass) {
-    // Check cache first
     if (cache.containsKey(entityClass)) {
       return cache.get(entityClass);
     }
 
-    // Validate @Entity annotation
     Entity entityAnnotation = entityClass.getAnnotation(Entity.class);
     if (entityAnnotation == null) {
       throw new IllegalArgumentException(
           "Class " + entityClass.getName() + " is not annotated with @Entity");
     }
 
-    // Determine table name
-    String tableName = entityAnnotation.table();
-    if (tableName.isEmpty()) {
-      tableName = entityClass.getSimpleName().toLowerCase();
-    }
+    String tableName = resolveTableName(entityClass, entityAnnotation);
 
-    // Build entity metadata
     EntityMetadata.Builder builder = EntityMetadata.builder(entityClass)
         .tableName(tableName);
 
-    // Parse all declared fields
     for (Field field : entityClass.getDeclaredFields()) {
       FieldMetadata fieldMetadata = parseField(field);
 
       if (fieldMetadata != null) {
         if (fieldMetadata.isId()) {
           builder.idField(fieldMetadata);
+        } else if (fieldMetadata.isRelationship()) {
+          builder.addRelationship(fieldMetadata);
         } else {
           builder.addColumn(fieldMetadata);
         }
@@ -68,57 +55,116 @@ public class MetadataParser {
     return metadata;
   }
 
-  /**
-   * Parses a single field and extracts its metadata.
-   * 
-   * @param field The field to parse
-   * @return FieldMetadata or null if field should be ignored
-   */
+  private String resolveTableName(Class<?> entityClass, Entity entityAnnotation) {
+    Table tableAnnotation = entityClass.getAnnotation(Table.class);
+    if (tableAnnotation != null && !tableAnnotation.name().isEmpty()) {
+      return tableAnnotation.name();
+    }
+
+    if (!entityAnnotation.name().isEmpty()) {
+      return entityAnnotation.name();
+    }
+
+    return entityClass.getSimpleName().toLowerCase();
+  }
+
   private FieldMetadata parseField(Field field) {
-    // Skip static and transient fields
     int modifiers = field.getModifiers();
     if (java.lang.reflect.Modifier.isStatic(modifiers) ||
         java.lang.reflect.Modifier.isTransient(modifiers)) {
       return null;
     }
 
-    Id idAnnotation = field.getAnnotation(Id.class);
-    Column columnAnnotation = field.getAnnotation(Column.class);
-    GeneratedValue generatedValue = field.getAnnotation(GeneratedValue.class);
-
-    // If no annotations, still include field with default settings
-    // (This mimics JPA's default behavior)
-
     FieldMetadata.Builder builder = FieldMetadata.builder(field);
 
-    // Handle @Id
-    if (idAnnotation != null) {
+    // Parse @Id
+    if (field.isAnnotationPresent(Id.class)) {
       builder.isId(true);
     }
 
-    // Handle @GeneratedValue
-    if (generatedValue != null) {
+    // Parse @GeneratedValue
+    if (field.isAnnotationPresent(GeneratedValue.class)) {
       builder.isGeneratedValue(true);
     }
 
-    // Handle @Column
+    // Parse @Column
+    Column columnAnnotation = field.getAnnotation(Column.class);
     if (columnAnnotation != null) {
-      String columnName = columnAnnotation.name();
-      if (!columnName.isEmpty()) {
-        builder.columnName(columnName);
+      if (!columnAnnotation.name().isEmpty()) {
+        builder.columnName(columnAnnotation.name());
       }
       builder.nullable(columnAnnotation.nullable());
       builder.length(columnAnnotation.length());
       builder.unique(columnAnnotation.unique());
     }
 
+    // Parse relationship annotations
+    parseRelationships(field, builder);
+
     return builder.build();
   }
 
-  /**
-   * Clears the metadata cache.
-   * Useful for testing.
-   */
+  private void parseRelationships(Field field, FieldMetadata.Builder builder) {
+    // @ManyToOne
+    ManyToOne manyToOne = field.getAnnotation(ManyToOne.class);
+    if (manyToOne != null) {
+      builder.relationshipType(RelationshipType.MANY_TO_ONE);
+      builder.targetEntity(field.getType());
+      parseJoinColumn(field, builder);
+      return;
+    }
+
+    // @OneToMany
+    OneToMany oneToMany = field.getAnnotation(OneToMany.class);
+    if (oneToMany != null) {
+      builder.relationshipType(RelationshipType.ONE_TO_MANY);
+      builder.mappedBy(oneToMany.mappedBy());
+      builder.targetEntity(extractCollectionType(field));
+      return;
+    }
+
+    // @ManyToMany
+    ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
+    if (manyToMany != null) {
+      builder.relationshipType(RelationshipType.MANY_TO_MANY);
+      builder.mappedBy(manyToMany.mappedBy());
+      builder.targetEntity(extractCollectionType(field));
+      return;
+    }
+
+    // @OneToOne
+    OneToOne oneToOne = field.getAnnotation(OneToOne.class);
+    if (oneToOne != null) {
+      builder.relationshipType(RelationshipType.ONE_TO_ONE);
+      builder.targetEntity(field.getType());
+      builder.mappedBy(oneToOne.mappedBy());
+      parseJoinColumn(field, builder);
+    }
+  }
+
+  private void parseJoinColumn(Field field, FieldMetadata.Builder builder) {
+    JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+    if (joinColumn != null && !joinColumn.name().isEmpty()) {
+      builder.columnName(joinColumn.name());
+    } else {
+      // Default: fieldName_id
+      builder.columnName(field.getName() + "_id");
+    }
+  }
+
+  private Class<?> extractCollectionType(Field field) {
+    if (Collection.class.isAssignableFrom(field.getType())) {
+      java.lang.reflect.Type genericType = field.getGenericType();
+      if (genericType instanceof ParameterizedType pt) {
+        java.lang.reflect.Type[] typeArgs = pt.getActualTypeArguments();
+        if (typeArgs.length > 0 && typeArgs[0] instanceof Class) {
+          return (Class<?>) typeArgs[0];
+        }
+      }
+    }
+    return Object.class;
+  }
+
   public void clearCache() {
     cache.clear();
   }

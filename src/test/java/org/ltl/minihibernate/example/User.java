@@ -1,18 +1,21 @@
 package org.ltl.minihibernate.example;
 
-import org.ltl.minihibernate.annotation.Column;
-import org.ltl.minihibernate.annotation.Entity;
-import org.ltl.minihibernate.annotation.GeneratedValue;
-import org.ltl.minihibernate.annotation.Id;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 /**
  * Example entity for testing and learning.
  */
-@Entity(table = "users")
+@Entity
+@Table(name = "users")
 public class User {
 
   @Id
-  @GeneratedValue
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
   @Column(name = "name", nullable = false, length = 100)
@@ -24,7 +27,6 @@ public class User {
   @Column(name = "age")
   private Integer age;
 
-  // Default constructor required for ORM
   public User() {
   }
 
