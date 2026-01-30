@@ -342,12 +342,12 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public Query createNamedQuery(String name) {
-    throw new UnsupportedOperationException();
+    throw new IllegalArgumentException("Named query not found: " + name);
   }
 
   @Override
   public <T> TypedQuery<T> createNamedQuery(String name, Class<T> resultClass) {
-    throw new UnsupportedOperationException();
+    throw new IllegalArgumentException("Named query not found: " + name);
   }
 
   @Override

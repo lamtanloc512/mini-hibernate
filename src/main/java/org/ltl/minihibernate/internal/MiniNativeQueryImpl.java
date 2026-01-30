@@ -160,21 +160,42 @@ public class MiniNativeQueryImpl implements Query {
 
   @Override
   public Parameter<?> getParameter(String name) {
+    System.out.println("MiniNativeQueryImpl: getParameter(" + name + ")");
     throw new UnsupportedOperationException();
   }
 
   @Override
   public <T> Parameter<T> getParameter(String name, Class<T> type) {
+    System.out.println("MiniNativeQueryImpl: getParameter(" + name + ", " + type + ")");
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Parameter<?> getParameter(int position) {
-    throw new UnsupportedOperationException();
+    // Spring Data might check this?
+    // System.out.println("MiniNativeQueryImpl: getParameter(" + position + ")");
+    // throw new UnsupportedOperationException();
+    return new Parameter<Object>() {
+      @Override
+      public String getName() {
+        return null;
+      }
+
+      @Override
+      public Integer getPosition() {
+        return position;
+      }
+
+      @Override
+      public Class<Object> getParameterType() {
+        return Object.class;
+      }
+    };
   }
 
   @Override
   public <T> Parameter<T> getParameter(int position, Class<T> type) {
+    System.out.println("MiniNativeQueryImpl: getParameter(" + position + ", " + type + ")");
     throw new UnsupportedOperationException();
   }
 

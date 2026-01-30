@@ -9,7 +9,7 @@ import org.ltl.minihibernate.internal.metamodel.MiniTypeImpl;
 import org.ltl.minihibernate.metadata.EntityMetadata;
 import org.ltl.minihibernate.metadata.FieldMetadata;
 
-import io.vavr.collection.HashMap;
+import io.vavr.collection.*;
 import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.EmbeddableType;
 import jakarta.persistence.metamodel.EntityType;
@@ -19,14 +19,14 @@ import jakarta.persistence.metamodel.Type;
 
 public class MiniMetamodelImpl implements Metamodel {
 
-  private io.vavr.collection.Map<Class<?>, MiniEntityTypeImpl<?>> entities = HashMap.empty();
-  private io.vavr.collection.Map<Class<?>, MiniManagedTypeImpl<?>> managedTypes = HashMap.empty();
+  private Map<Class<?>, MiniEntityTypeImpl<?>> entities = HashMap.empty();
+  private Map<Class<?>, MiniManagedTypeImpl<?>> managedTypes = HashMap.empty();
 
-  public MiniMetamodelImpl(io.vavr.collection.Map<Class<?>, EntityMetadata> entityMetadataMap) {
+  public MiniMetamodelImpl(Map<Class<?>, EntityMetadata> entityMetadataMap) {
     initialize(entityMetadataMap);
   }
 
-  private void initialize(io.vavr.collection.Map<Class<?>, EntityMetadata> entityMetadataMap) {
+  private void initialize(Map<Class<?>, EntityMetadata> entityMetadataMap) {
     // 1. Create all EntityTypes
     entityMetadataMap.forEach((cls, metadata) -> {
       MiniEntityTypeImpl<?> entityType = new MiniEntityTypeImpl<>(cls, metadata.getTableName());
