@@ -1,200 +1,138 @@
 package org.ltl.minihibernate.internal;
 
+import java.util.Set;
+
+import org.ltl.minihibernate.internal.metamodel.MiniEntityTypeImpl;
+import org.ltl.minihibernate.internal.metamodel.MiniManagedTypeImpl;
+import org.ltl.minihibernate.internal.metamodel.MiniSingularAttributeImpl;
+import org.ltl.minihibernate.internal.metamodel.MiniTypeImpl;
+import org.ltl.minihibernate.metadata.EntityMetadata;
+import org.ltl.minihibernate.metadata.FieldMetadata;
+
+import io.vavr.collection.HashMap;
+import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.EmbeddableType;
 import jakarta.persistence.metamodel.EntityType;
 import jakarta.persistence.metamodel.ManagedType;
 import jakarta.persistence.metamodel.Metamodel;
 import jakarta.persistence.metamodel.Type;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public class MiniMetamodelImpl implements Metamodel {
 
-  private final io.vavr.collection.Map<Class<?>, ?> entityMetadataMap;
+  private io.vavr.collection.Map<Class<?>, MiniEntityTypeImpl<?>> entities = HashMap.empty();
+  private io.vavr.collection.Map<Class<?>, MiniManagedTypeImpl<?>> managedTypes = HashMap.empty();
 
-  public MiniMetamodelImpl(io.vavr.collection.Map<Class<?>, ?> entityMetadataMap) {
-    this.entityMetadataMap = entityMetadataMap;
+  public MiniMetamodelImpl(io.vavr.collection.Map<Class<?>, EntityMetadata> entityMetadataMap) {
+    initialize(entityMetadataMap);
   }
 
+  private void initialize(io.vavr.collection.Map<Class<?>, EntityMetadata> entityMetadataMap) {
+    // 1. Create all EntityTypes
+    entityMetadataMap.forEach((cls, metadata) -> {
+      MiniEntityTypeImpl<?> entityType = new MiniEntityTypeImpl<>(cls, metadata.getTableName());
+      entities = entities.put(cls, entityType);
+      managedTypes = managedTypes.put(cls, entityType);
+    });
+
+    // 2. Initialize Attributes for each EntityType
+    entityMetadataMap.forEach((cls, metadata) -> {
+      @SuppressWarnings("unchecked")
+      MiniEntityTypeImpl<Object> entityType = (MiniEntityTypeImpl<Object>) entities.get(cls).get();
+      initializeAttributes(entityType, metadata);
+    });
+  }
+
+  private <X> void initializeAttributes(MiniEntityTypeImpl<X> entityType, EntityMetadata metadata) {
+    // ID Attribute
+    FieldMetadata idField = metadata.getIdField();
+    if (idField != null) {
+      MiniSingularAttributeImpl<X, Object> idAttr = createSingularAttribute(entityType, idField, true);
+      entityType.setIdAttribute(idAttr);
+    }
+
+    // Other columns
+    metadata.getColumns().forEach(field -> {
+      // TODO: Add support for non-ID attributes
+    });
+  }
+
+  @SuppressWarnings("unchecked")
+  private <X, T> MiniSingularAttributeImpl<X, T> createSingularAttribute(MiniManagedTypeImpl<X> owner,
+      FieldMetadata field, boolean isId) {
+    Class<T> attrType = (Class<T>) field.getJavaType();
+    Type<T> type = new MiniTypeImpl<>(attrType) {
+      @Override
+      public PersistenceType getPersistenceType() {
+        return PersistenceType.BASIC; // Simplify for now
+      }
+    };
+
+    return new MiniSingularAttributeImpl<>(
+        field.getFieldName(),
+        attrType,
+        owner,
+        field.getField(),
+        Attribute.PersistentAttributeType.BASIC,
+        isId,
+        false,
+        false,
+        type);
+  }
+
+  @SuppressWarnings("unchecked")
   @Override
   public <X> EntityType<X> entity(Class<X> cls) {
-    return createEntityType(cls);
-  }
-
-  public EntityType<?> entity(String name) {
-    return null;
+    return (EntityType<X>) entities.get(cls)
+        .getOrElseThrow(() -> new IllegalArgumentException("Not an entity: " + cls));
   }
 
   @Override
+  public EntityType<?> entity(String name) {
+    // Very inefficient scan, but standard JPA requires it
+    return entities.values()
+        .find(e -> e.getJavaType().getSimpleName().equals(name)) // SimpleName approximation
+        .map(e -> (EntityType<?>) e)
+        .getOrElseThrow(() -> new IllegalArgumentException("EntityType not found: " + name));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override
   public <X> ManagedType<X> managedType(Class<X> cls) {
-    if (entityMetadataMap.containsKey(cls)) {
-      return (ManagedType<X>) entity(cls);
-    }
-    return createManagedType(cls);
+    return (ManagedType<X>) managedTypes.get(cls)
+        .getOrElseThrow(() -> new IllegalArgumentException("Not a managed type: " + cls));
   }
 
   public ManagedType<?> managedType(String name) {
-    return null;
+    // Very inefficient scan, but standard JPA requires it
+    return managedTypes.values()
+        .find(m -> m.getJavaType().getSimpleName().equals(name)) // SimpleName approximation
+        .map(m -> (ManagedType<?>) m)
+        .getOrElseThrow(() -> new IllegalArgumentException("ManagedType not found: " + name));
   }
 
   @Override
   public <X> EmbeddableType<X> embeddable(Class<X> cls) {
-    return null;
+    throw new IllegalArgumentException("Embeddables not supported");
   }
 
   public EmbeddableType<?> embeddable(String name) {
-    return null;
+    throw new IllegalArgumentException("Embeddables not supported");
   }
 
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   @Override
   public Set<ManagedType<?>> getManagedTypes() {
-    return entityMetadataMap.keySet()
-        .toJavaSet()
-        .stream()
-        .map(cls -> (ManagedType<?>) entity(cls))
-        .collect(Collectors.toSet());
+    return (Set) managedTypes.values().toJavaSet();
   }
 
-  public <X> ManagedType<X> getManagedType(Class<X> cls) {
-    return managedType(cls);
-  }
-
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   @Override
   public Set<EntityType<?>> getEntities() {
-    return entityMetadataMap.keySet()
-        .toJavaSet()
-        .stream()
-        .map(this::createEntityType)
-        .collect(Collectors.toSet());
+    return (Set) entities.values().toJavaSet();
   }
 
   @Override
   public Set<EmbeddableType<?>> getEmbeddables() {
     return java.util.Collections.emptySet();
   }
-
-  @SuppressWarnings("unchecked")
-  private <X> ManagedType<X> createManagedType(Class<X> cls) {
-    return (ManagedType<X>) java.lang.reflect.Proxy.newProxyInstance(
-        ManagedType.class.getClassLoader(),
-        new Class<?>[] { ManagedType.class },
-        (proxy, method, args) -> {
-          if (method.getName().equals("getJavaType"))
-            return cls;
-          if (method.getName().equals("getPersistenceType"))
-            return jakarta.persistence.metamodel.Type.PersistenceType.ENTITY;
-          if (method.getName().equals("getAttributes"))
-            return java.util.Collections.emptySet();
-          if (method.getName().equals("getSingularAttributes"))
-            return java.util.Collections.emptySet();
-          if (method.getName().equals("getDeclaredSingularAttributes"))
-            return java.util.Collections.emptySet();
-          if (method.getName().equals("hashCode"))
-            return System.identityHashCode(proxy);
-          if (method.getName().equals("equals"))
-            return proxy == args[0];
-          if (method.getName().equals("toString"))
-            return "ManagedType[" + cls.getName() + "]";
-          return null;
-        });
-  }
-
-  @SuppressWarnings("unchecked")
-  private <X> EntityType<X> createEntityType(Class<X> cls) {
-    io.vavr.control.Option<org.ltl.minihibernate.metadata.EntityMetadata> metadataOpt = (io.vavr.control.Option<org.ltl.minihibernate.metadata.EntityMetadata>) entityMetadataMap
-        .get(cls);
-    if (metadataOpt.isEmpty()) {
-      System.out.println("WARNING: No metadata found for " + cls.getName());
-    }
-    return (EntityType<X>) java.lang.reflect.Proxy.newProxyInstance(
-        EntityType.class.getClassLoader(),
-        new Class<?>[] { EntityType.class },
-        (proxy, method, args) -> {
-          if (method.getName().equals("getJavaType"))
-            return cls;
-          if (method.getName().equals("getName"))
-            return cls.getSimpleName();
-          if (method.getName().equals("getPersistenceType"))
-            return jakarta.persistence.metamodel.Type.PersistenceType.ENTITY;
-
-          jakarta.persistence.metamodel.SingularAttribute<X, ?> idAttr = metadataOpt.map(m -> createIdAttribute(cls, m))
-              .getOrNull();
-          java.util.Set<jakarta.persistence.metamodel.Attribute<? super X, ?>> attrs = idAttr != null
-              ? java.util.Collections.singleton(idAttr)
-              : java.util.Collections.emptySet();
-          java.util.Set<jakarta.persistence.metamodel.SingularAttribute<? super X, ?>> sAttrs = idAttr != null
-              ? java.util.Collections.singleton(idAttr)
-              : java.util.Collections.emptySet();
-
-          if (method.getName().equals("getAttributes"))
-            return attrs;
-          if (method.getName().equals("getSingularAttributes"))
-            return sAttrs;
-          if (method.getName().equals("getDeclaredSingularAttributes"))
-            return sAttrs;
-          if (method.getName().equals("getId"))
-            return idAttr;
-          if (method.getName().equals("getDeclaredId"))
-            return idAttr;
-          if (method.getName().equals("getIdType")) {
-            return idAttr != null ? idAttr.getType() : null;
-          }
-          if (method.getName().equals("hasSingleIdAttribute"))
-            return true;
-          if (method.getName().equals("hashCode"))
-            return System.identityHashCode(proxy);
-          if (method.getName().equals("equals"))
-            return proxy == args[0];
-          if (method.getName().equals("toString"))
-            return "EntityType[" + cls.getName() + "]";
-          return null;
-        });
-  }
-
-  @SuppressWarnings("unchecked")
-  private <X, T> jakarta.persistence.metamodel.SingularAttribute<X, T> createIdAttribute(Class<X> cls,
-      org.ltl.minihibernate.metadata.EntityMetadata metadata) {
-    return (jakarta.persistence.metamodel.SingularAttribute<X, T>) java.lang.reflect.Proxy.newProxyInstance(
-        jakarta.persistence.metamodel.SingularAttribute.class.getClassLoader(),
-        new Class<?>[] { jakarta.persistence.metamodel.SingularAttribute.class },
-        (proxy, method, args) -> {
-          if (method.getName().equals("getName"))
-            return metadata.getIdField().getFieldName();
-          if (method.getName().equals("getJavaType"))
-            return metadata.getIdField().getJavaType();
-          if (method.getName().equals("getPersistentAttributeType"))
-            return jakarta.persistence.metamodel.Attribute.PersistentAttributeType.BASIC;
-          if (method.getName().equals("isId"))
-            return true;
-          if (method.getName().equals("getType")) {
-            return createBasicType(metadata.getIdField().getJavaType());
-          }
-          if (method.getName().equals("getDeclaringType"))
-            return createEntityType(cls);
-          if (method.getName().equals("getJavaMember"))
-            return metadata.getIdField().getField();
-
-          if (method.getName().equals("hashCode"))
-            return System.identityHashCode(proxy);
-          if (method.getName().equals("equals"))
-            return proxy == args[0];
-          return null;
-        });
-  }
-
-  private <T> Type<T> createBasicType(Class<T> cls) {
-    return (Type<T>) java.lang.reflect.Proxy.newProxyInstance(
-        Type.class.getClassLoader(),
-        new Class<?>[] { Type.class },
-        (proxy, method, args) -> {
-          if (method.getName().equals("getJavaType"))
-            return cls;
-          if (method.getName().equals("getPersistenceType"))
-            return Type.PersistenceType.BASIC;
-          if (method.getName().equals("toString"))
-            return "BasicType[" + cls.getName() + "]";
-          return null;
-        });
-  }
-
 }
