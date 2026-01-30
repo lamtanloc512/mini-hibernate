@@ -2,7 +2,7 @@ package org.ltl.minihibernate.internal;
 
 import java.util.Properties;
 
-import javax.management.Query;
+import jakarta.persistence.Query;
 
 import org.ltl.minihibernate.api.MiniEntityManager;
 import org.ltl.minihibernate.api.MiniEntityManagerFactory;
@@ -170,7 +170,10 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
   @Override
   public java.util.Map<String, Object> getProperties() {
-    return java.util.Collections.emptyMap();
+    java.util.Map<String, Object> map = new java.util.HashMap<>();
+    map.put("jakarta.persistence.jdbc.url", dataSource.getJdbcUrl());
+    map.put("jakarta.persistence.jdbc.user", dataSource.getUsername());
+    return map;
   }
 
   @Override
@@ -221,23 +224,29 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
   @Override
   public <R> R callInTransaction(java.util.function.Function<EntityManager, R> function) {
-    throw new UnsupportedOperationException();
+    try (EntityManager em = createEntityManager()) {
+      em.getTransaction().begin();
+      try {
+        R result = function.apply(em);
+        em.getTransaction().commit();
+        return result;
+      } catch (Exception e) {
+        em.getTransaction().rollback();
+        throw e;
+      }
+    }
   }
 
   @Override
   public void runInTransaction(java.util.function.Consumer<EntityManager> consumer) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void addNamedQuery(String name, jakarta.persistence.Query query) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'addNamedQuery'");
+    callInTransaction(em -> {
+      consumer.accept(em);
+      return null;
+    });
   }
 
   @Override
   public void addNamedQuery(String name, Query query) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'addNamedQuery'");
+    throw new UnsupportedOperationException();
   }
 }

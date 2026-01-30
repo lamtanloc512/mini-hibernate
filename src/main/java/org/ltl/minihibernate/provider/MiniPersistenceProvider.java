@@ -13,25 +13,45 @@ public class MiniPersistenceProvider implements PersistenceProvider {
 
   @Override
   public EntityManagerFactory createEntityManagerFactory(String emName, Map<?, ?> properties) {
-    // In a real implementation, we would parse persistence.xml
-    // For mini-hibernate, we'll return a basic implementation if the name matches
-    if ("mini-hibernate".equals(emName)) {
-      // This would normally need a DataSource or connection details from the map
-      // For now, we assume MiniEntityManagerFactoryImpl can handle it or has defaults
-      return new MiniEntityManagerFactoryImpl();
+    if (emName != null && !emName.equals("mini-hibernate")) {
+      return null;
     }
-    return null;
+
+    MiniEntityManagerFactoryImpl.Builder builder = MiniEntityManagerFactoryImpl.builder();
+    if (properties != null) {
+      if (properties.containsKey("jakarta.persistence.jdbc.url")) {
+        builder.url(properties.get("jakarta.persistence.jdbc.url").toString());
+      }
+      if (properties.containsKey("jakarta.persistence.jdbc.user")) {
+        builder.username(properties.get("jakarta.persistence.jdbc.user").toString());
+      }
+      if (properties.containsKey("jakarta.persistence.jdbc.password")) {
+        builder.password(properties.get("jakarta.persistence.jdbc.password").toString());
+      }
+    }
+
+    return builder.build();
   }
 
   @Override
   public EntityManagerFactory createContainerEntityManagerFactory(PersistenceUnitInfo info,
       Map<?, ?> properties) {
-    return new MiniEntityManagerFactoryImpl();
+    MiniEntityManagerFactoryImpl.Builder builder = MiniEntityManagerFactoryImpl.builder();
+
+    // In a real container, we'd use info.getNonJtaDataSource()
+    // For mini-hibernate, we'll extract from info's properties if present
+    if (info.getProperties() != null) {
+      String url = info.getProperties().getProperty("jakarta.persistence.jdbc.url");
+      if (url != null)
+        builder.url(url);
+    }
+
+    return builder.build();
   }
 
   @Override
   public void generateSchema(PersistenceUnitInfo info, Map<?, ?> properties) {
-    // Not implemented
+    // Schema generation not yet supported
   }
 
   @Override
@@ -41,7 +61,22 @@ public class MiniPersistenceProvider implements PersistenceProvider {
 
   @Override
   public ProviderUtil getProviderUtil() {
-    return null; // Simplified
+    return new ProviderUtil() {
+      @Override
+      public jakarta.persistence.spi.LoadState isLoadedWithoutReference(Object entity, String attributeName) {
+        return jakarta.persistence.spi.LoadState.UNKNOWN;
+      }
+
+      @Override
+      public jakarta.persistence.spi.LoadState isLoadedWithReference(Object entity, String attributeName) {
+        return jakarta.persistence.spi.LoadState.UNKNOWN;
+      }
+
+      @Override
+      public jakarta.persistence.spi.LoadState isLoaded(Object entity) {
+        return jakarta.persistence.spi.LoadState.UNKNOWN;
+      }
+    };
   }
 
   @Override

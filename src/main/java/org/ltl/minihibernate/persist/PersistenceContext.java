@@ -95,6 +95,17 @@ public class PersistenceContext {
   }
 
   /**
+   * Removes an entity from the persistence context (detach).
+   */
+  public void removeEntity(Class<?> entityClass, Object id) {
+    EntityKey key = new EntityKey(entityClass, id);
+    entityMap = entityMap.remove(key);
+    states = states.remove(key);
+    snapshots = snapshots.remove(key);
+    metadataCache = metadataCache.remove(key);
+  }
+
+  /**
    * Marks an entity as removed.
    */
   public void markRemoved(Object entity) {

@@ -3,7 +3,7 @@ package org.ltl.minihibernate.api;
 import jakarta.persistence.EntityManagerFactory;
 import java.io.Closeable;
 
-import javax.management.Query;
+import jakarta.persistence.Query;
 
 /**
  * MiniEntityManagerFactory - Factory interface.

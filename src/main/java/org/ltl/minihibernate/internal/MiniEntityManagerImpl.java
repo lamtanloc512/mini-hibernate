@@ -1,5 +1,7 @@
 package org.ltl.minihibernate.internal;
 
+import java.sql.Connection;
+
 import org.ltl.minihibernate.api.MiniEntityManager;
 import org.ltl.minihibernate.api.MiniTransaction;
 import org.ltl.minihibernate.api.MiniTypedQuery;
@@ -8,10 +10,30 @@ import org.ltl.minihibernate.persist.EntityPersister;
 import org.ltl.minihibernate.persist.PersistenceContext;
 import org.ltl.minihibernate.session.EntityState;
 import org.ltl.minihibernate.sql.SQLGenerator;
+
 import io.vavr.control.Option;
 import io.vavr.control.Try;
-
-import java.sql.Connection;
+import jakarta.persistence.CacheRetrieveMode;
+import jakarta.persistence.CacheStoreMode;
+import jakarta.persistence.ConnectionConsumer;
+import jakarta.persistence.ConnectionFunction;
+import jakarta.persistence.EntityGraph;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.FindOption;
+import jakarta.persistence.FlushModeType;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.LockOption;
+import jakarta.persistence.Query;
+import jakarta.persistence.RefreshOption;
+import jakarta.persistence.StoredProcedureQuery;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.TypedQueryReference;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaDelete;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.CriteriaSelect;
+import jakarta.persistence.criteria.CriteriaUpdate;
+import jakarta.persistence.metamodel.Metamodel;
 
 /**
  * MiniEntityManagerImpl - The ACTUAL implementation.
@@ -185,18 +207,33 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public void lock(Object entity, jakarta.persistence.LockModeType lockMode) {
+  public void lock(Object entity, LockModeType lockMode) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void lock(Object entity, jakarta.persistence.LockModeType lockMode, java.util.Map<String, Object> properties) {
+  public void lock(Object entity, LockModeType lockMode, java.util.Map<String, Object> properties) {
     throw new UnsupportedOperationException();
   }
 
   @Override
   public void refresh(Object entity) {
-    throw new UnsupportedOperationException();
+    checkOpen();
+    EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
+    Object id = metadata.getId(entity);
+    if (id == null) {
+      throw new IllegalArgumentException("Cannot refresh transient entity");
+    }
+
+    Object fresh = Try.of(() -> entityPersister.load(metadata, id))
+        .getOrElseThrow(e -> new RuntimeException("Refresh failed", e));
+
+    if (fresh == null) {
+      throw new jakarta.persistence.EntityNotFoundException("Entity not found in DB: " + id);
+    }
+
+    copyState(fresh, entity, metadata);
+    persistenceContext.addEntity(entity, metadata, EntityState.MANAGED);
   }
 
   @Override
@@ -205,24 +242,29 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public void refresh(Object entity, jakarta.persistence.LockModeType lockMode) {
+  public void refresh(Object entity, LockModeType lockMode) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void refresh(Object entity, jakarta.persistence.LockModeType lockMode,
+  public void refresh(Object entity, LockModeType lockMode,
       java.util.Map<String, Object> properties) {
     throw new UnsupportedOperationException();
   }
 
   @Override
   public void detach(Object entity) {
-    persistenceContext.clear();
-  } // Simplified
+    checkOpen();
+    EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
+    Object id = metadata.getId(entity);
+    if (id != null) {
+      persistenceContext.removeEntity(entity.getClass(), id);
+    }
+  }
 
   @Override
-  public jakarta.persistence.LockModeType getLockMode(Object entity) {
-    return jakarta.persistence.LockModeType.NONE;
+  public LockModeType getLockMode(Object entity) {
+    return LockModeType.NONE;
   }
 
   @Override
@@ -236,74 +278,75 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public jakarta.persistence.Query createQuery(String qlString) {
+  public Query createQuery(String qlString) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.TypedQuery<T> createQuery(
-      jakarta.persistence.criteria.CriteriaQuery<T> criteriaQuery) {
+  public <T> TypedQuery<T> createQuery(
+      CriteriaQuery<T> criteriaQuery) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createQuery(jakarta.persistence.criteria.CriteriaUpdate<?> updateQuery) {
+  public Query createQuery(CriteriaUpdate<?> updateQuery) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createQuery(jakarta.persistence.criteria.CriteriaDelete<?> deleteQuery) {
+  public Query createQuery(CriteriaDelete<?> deleteQuery) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.TypedQuery<T> createQuery(String qlString, Class<T> resultClass) {
+  public <T> TypedQuery<T> createQuery(String qlString, Class<T> resultClass) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createNamedQuery(String name) {
+  public Query createNamedQuery(String name) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.TypedQuery<T> createNamedQuery(String name, Class<T> resultClass) {
+  public <T> TypedQuery<T> createNamedQuery(String name, Class<T> resultClass) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createNativeQuery(String sqlString) {
+  public Query createNativeQuery(String sqlString) {
+    checkOpen();
+    return new MiniNativeQueryImpl(sqlString, connection);
+  }
+
+  @Override
+  public <T> Query createNativeQuery(String sqlString, Class<T> resultClass) {
+    return createNativeQuery(sqlString);
+  }
+
+  @Override
+  public Query createNativeQuery(String sqlString, String resultSetMapping) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createNativeQuery(String sqlString, Class resultClass) {
+  public StoredProcedureQuery createNamedStoredProcedureQuery(String name) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.Query createNativeQuery(String sqlString, String resultSetMapping) {
+  public StoredProcedureQuery createStoredProcedureQuery(String procedureName) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.StoredProcedureQuery createNamedStoredProcedureQuery(String name) {
+  public StoredProcedureQuery createStoredProcedureQuery(String procedureName,
+      Class<?>... resultClasses) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName,
-      Class... resultClasses) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName,
+  public StoredProcedureQuery createStoredProcedureQuery(String procedureName,
       String... resultSetMappings) {
     throw new UnsupportedOperationException();
   }
@@ -318,6 +361,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
     return transaction != null && transaction.isActive();
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public <T> T unwrap(Class<T> cls) {
     if (cls.isAssignableFrom(this.getClass())) {
@@ -335,98 +379,98 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public jakarta.persistence.EntityManagerFactory getEntityManagerFactory() {
+  public EntityManagerFactory getEntityManagerFactory() {
     return factory;
   }
 
   @Override
-  public jakarta.persistence.criteria.CriteriaBuilder getCriteriaBuilder() {
+  public CriteriaBuilder getCriteriaBuilder() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.metamodel.Metamodel getMetamodel() {
+  public Metamodel getMetamodel() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.EntityGraph<T> createEntityGraph(Class<T> rootType) {
+  public <T> EntityGraph<T> createEntityGraph(Class<T> rootType) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.EntityGraph<?> createEntityGraph(String graphName) {
+  public EntityGraph<?> createEntityGraph(String graphName) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public jakarta.persistence.EntityGraph<?> getEntityGraph(String graphName) {
+  public EntityGraph<?> getEntityGraph(String graphName) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> java.util.List<jakarta.persistence.EntityGraph<? super T>> getEntityGraphs(Class<T> entityClass) {
+  public <T> java.util.List<EntityGraph<? super T>> getEntityGraphs(Class<T> entityClass) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void setFlushMode(jakarta.persistence.FlushModeType flushMode) {
+  public void setFlushMode(FlushModeType flushMode) {
   }
 
   @Override
-  public jakarta.persistence.FlushModeType getFlushMode() {
-    return jakarta.persistence.FlushModeType.AUTO;
+  public FlushModeType getFlushMode() {
+    return FlushModeType.AUTO;
   }
 
   // New methods in JPA 3.2+
   @Override
-  public void setCacheStoreMode(jakarta.persistence.CacheStoreMode cacheStoreMode) {
+  public void setCacheStoreMode(CacheStoreMode cacheStoreMode) {
   }
 
   @Override
-  public jakarta.persistence.CacheStoreMode getCacheStoreMode() {
-    return jakarta.persistence.CacheStoreMode.USE;
+  public CacheStoreMode getCacheStoreMode() {
+    return CacheStoreMode.USE;
   }
 
   @Override
-  public void setCacheRetrieveMode(jakarta.persistence.CacheRetrieveMode cacheRetrieveMode) {
+  public void setCacheRetrieveMode(CacheRetrieveMode cacheRetrieveMode) {
   }
 
   @Override
-  public jakarta.persistence.CacheRetrieveMode getCacheRetrieveMode() {
-    return jakarta.persistence.CacheRetrieveMode.USE;
+  public CacheRetrieveMode getCacheRetrieveMode() {
+    return CacheRetrieveMode.USE;
   }
 
   @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.FindOption... options) {
+  public <T> T find(Class<T> entityClass, Object primaryKey, FindOption... options) {
     return find(entityClass, primaryKey);
   }
 
   @Override
-  public <T> T find(jakarta.persistence.EntityGraph<T> entityGraph, Object primaryKey,
-      jakarta.persistence.FindOption... options) {
+  public <T> T find(EntityGraph<T> entityGraph, Object primaryKey,
+      FindOption... options) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void refresh(Object entity, jakarta.persistence.RefreshOption... options) {
+  public void refresh(Object entity, RefreshOption... options) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void lock(Object entity, jakarta.persistence.LockModeType lockMode,
-      jakarta.persistence.LockOption... lockOptions) {
+  public void lock(Object entity, LockModeType lockMode,
+      LockOption... lockOptions) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.TypedQuery<T> createQuery(
-      jakarta.persistence.criteria.CriteriaSelect<T> criteriaQuery) {
+  public <T> TypedQuery<T> createQuery(
+      CriteriaSelect<T> criteriaQuery) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> jakarta.persistence.TypedQuery<T> createQuery(jakarta.persistence.TypedQueryReference<T> queryReference) {
+  public <T> TypedQuery<T> createQuery(TypedQueryReference<T> queryReference) {
     throw new UnsupportedOperationException();
   }
 
@@ -436,12 +480,12 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.LockModeType lockMode) {
+  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode) {
     return find(entityClass, primaryKey);
   }
 
   @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.LockModeType lockMode,
+  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode,
       java.util.Map<String, Object> properties) {
     return find(entityClass, primaryKey);
   }
@@ -452,12 +496,12 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public <C, T> T callWithConnection(jakarta.persistence.ConnectionFunction<C, T> function) {
+  public <C, T> T callWithConnection(ConnectionFunction<C, T> function) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <C> void runWithConnection(jakarta.persistence.ConnectionConsumer<C> consumer) {
+  public <C> void runWithConnection(ConnectionConsumer<C> consumer) {
     throw new UnsupportedOperationException();
   }
 
