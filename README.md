@@ -206,7 +206,7 @@ repo.findByEmail("test@example.com");  // Executes SQL automatically!
 ┌─────────────────────────────────────────────────────────────┐
 │  UserRepository interface (no implementation!)              │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ findByEmail(String) → @Query("SELECT...")              ││
+│  │ findByEmail(String) → @Query("SELECT...")               ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -330,19 +330,19 @@ public class App {
             .password("password")
             .addEntityClass(User.class)
             .build();
-        
+
         // Use EntityManager
         try (var em = factory.createEntityManager()) {
             em.getTransaction().begin();
             em.persist(new User("John", "john@example.com"));
             em.getTransaction().commit();
         }
-        
+
         // Or use Repository
         var repoFactory = new RepositoryFactory(factory);
         var userRepo = repoFactory.createRepository(UserRepository.class);
         userRepo.findByEmail("john@example.com");
-        
+
         factory.close();
     }
 }
@@ -353,16 +353,17 @@ public class App {
 ### Spring Boot Integration
 
 **1. Configuration class:**
+
 ```java
 @Configuration
 public class MiniHibernateConfig {
 
     @Value("${spring.datasource.url}")
     private String url;
-    
+
     @Value("${spring.datasource.username}")
     private String username;
-    
+
     @Value("${spring.datasource.password}")
     private String password;
 
@@ -375,7 +376,7 @@ public class MiniHibernateConfig {
             .addEntityClass(User.class)
             .build();
     }
-    
+
     @Bean
     public UserRepository userRepository(MiniEntityManagerFactory factory) {
         return new RepositoryFactory(factory).createRepository(UserRepository.class);
@@ -384,12 +385,13 @@ public class MiniHibernateConfig {
 ```
 
 **2. Use in service:**
+
 ```java
 @Service
 @RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
-    
+
     public Optional<User> findByEmail(String email) {
         return userRepository.findByEmail(email);
     }
@@ -406,10 +408,10 @@ public class MiniHibernateProducer {
 
     @ConfigProperty(name = "quarkus.datasource.jdbc.url")
     String url;
-    
+
     @ConfigProperty(name = "quarkus.datasource.username")
     String username;
-    
+
     @ConfigProperty(name = "quarkus.datasource.password")
     String password;
 
@@ -443,10 +445,10 @@ public class MiniHibernateFactory {
 
     @Value("${datasource.url}")
     private String url;
-    
+
     @Value("${datasource.username}")
     private String username;
-    
+
     @Value("${datasource.password}")
     private String password;
 
@@ -457,7 +459,7 @@ public class MiniHibernateFactory {
             .addEntityClass(User.class)
             .build();
     }
-    
+
     @Singleton
     public UserRepository userRepository(MiniEntityManagerFactory factory) {
         return new RepositoryFactory(factory).createRepository(UserRepository.class);
@@ -476,6 +478,7 @@ mvn test-compile exec:java \
 ```
 
 Sample results:
+
 ```
 Operation                               Avg (µs)      Ops/sec
 ------------------------------------------------------------

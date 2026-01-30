@@ -1,6 +1,8 @@
 package org.ltl.minihibernate.internal;
 
 import java.sql.Connection;
+import java.util.Collections;
+import java.util.*;
 
 import org.ltl.minihibernate.api.MiniEntityManager;
 import org.ltl.minihibernate.api.MiniTransaction;
@@ -11,7 +13,6 @@ import org.ltl.minihibernate.persist.PersistenceContext;
 import org.ltl.minihibernate.session.EntityState;
 import org.ltl.minihibernate.sql.SQLGenerator;
 
-import io.vavr.control.Option;
 import io.vavr.control.Try;
 import jakarta.persistence.CacheRetrieveMode;
 import jakarta.persistence.CacheStoreMode;
@@ -19,6 +20,7 @@ import jakarta.persistence.ConnectionConsumer;
 import jakarta.persistence.ConnectionFunction;
 import jakarta.persistence.EntityGraph;
 import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.FindOption;
 import jakarta.persistence.FlushModeType;
 import jakarta.persistence.LockModeType;
@@ -36,14 +38,7 @@ import jakarta.persistence.criteria.CriteriaUpdate;
 import jakarta.persistence.metamodel.Metamodel;
 
 /**
- * MiniEntityManagerImpl - The ACTUAL implementation.
- * 
- * This is like Hibernate's SessionImpl which implements JPA's EntityManager.
- * 
- * When you call entityManager.persist(), the code ACTUALLY runs here,
- * but you only see the interface in your code.
- * 
- * Package: org.ltl.minihibernate.internal (hidden from API users)
+ * MiniEntityManagerImpl - Refactored with Vavr and EclipseLink patterns.
  */
 public class MiniEntityManagerImpl implements MiniEntityManager {
 
@@ -53,23 +48,29 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   private final EntityPersister entityPersister;
   private final SQLGenerator sqlGenerator;
   private MiniTransactionImpl transaction;
-  private boolean open = true;
 
-  // Package-private constructor - only Factory can create
+  private boolean open = true;
+  private Map<String, Object> properties;
+
   MiniEntityManagerImpl(Connection connection, MiniEntityManagerFactoryImpl factory) {
+    this(connection, factory, Collections.emptyMap());
+  }
+
+  MiniEntityManagerImpl(Connection connection, MiniEntityManagerFactoryImpl factory, Map<String, Object> properties) {
     this.connection = connection;
     this.factory = factory;
     this.persistenceContext = new PersistenceContext();
     this.sqlGenerator = new SQLGenerator();
-    this.entityPersister = new EntityPersister(connection, sqlGenerator);
+    this.entityPersister = new EntityPersister(connection, sqlGenerator, factory::getEntityMetadata);
+    this.properties = properties != null ? properties : Collections.emptyMap();
   }
 
   @Override
   public void persist(Object entity) {
-    checkOpen();
+    verifyOpen();
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
-
     Object id = metadata.getId(entity);
+
     if (id != null && persistenceContext.contains(entity.getClass(), id)) {
       return;
     }
@@ -80,29 +81,40 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public <T> T find(Class<T> entityClass, Object primaryKey) {
-    checkOpen();
+    return find(entityClass, primaryKey, null, null);
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, Map<String, Object> properties) {
+    return find(entityClass, primaryKey, null, properties);
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode) {
+    return find(entityClass, primaryKey, lockMode, null);
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode, Map<String, Object> properties) {
+    verifyOpen();
+    // Handle properties/hints if needed in future
+
     EntityMetadata metadata = factory.getEntityMetadata(entityClass);
 
-    // Check first-level cache
-    Option<Object> cached = persistenceContext.getEntity(entityClass, primaryKey);
-    if (cached.isDefined()) {
-      return entityClass.cast(cached.get());
-    }
-
-    // Load from database
-    return Try.of(() -> entityPersister.load(metadata, primaryKey))
-        .map(entity -> {
-          if (entity != null) {
-            persistenceContext.addEntity(entity, metadata, EntityState.MANAGED);
-          }
-          return entityClass.cast(entity);
-        })
-        .getOrElseThrow(e -> new RuntimeException("Failed to find entity", e));
+    return persistenceContext.getEntity(entityClass, primaryKey)
+        .map(entityClass::cast)
+        .getOrElse(() -> Try.of(() -> entityPersister.load(metadata, primaryKey, this::find))
+            .map(entity -> {
+              if (entity != null) {
+                persistenceContext.addEntity(entity, metadata, EntityState.MANAGED);
+              }
+              return entityClass.cast(entity);
+            }).getOrElseThrow(e -> new RuntimeException("Failed to find entity", e)));
   }
 
   @Override
   public void remove(Object entity) {
-    checkOpen();
+    verifyOpen();
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
     Object id = metadata.getId(entity);
 
@@ -117,7 +129,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   @Override
   @SuppressWarnings("unchecked")
   public <T> T merge(T entity) {
-    checkOpen();
+    verifyOpen();
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
     Object id = metadata.getId(entity);
 
@@ -126,27 +138,28 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
       return entity;
     }
 
-    Option<Object> existing = persistenceContext.getEntity(entity.getClass(), id);
-    if (existing.isDefined()) {
-      copyState(entity, existing.get(), metadata);
-      return (T) existing.get();
-    }
-
-    T managed = find((Class<T>) entity.getClass(), id);
-    if (managed != null) {
-      copyState(entity, managed, metadata);
-    } else {
-      persist(entity);
-      managed = entity;
-    }
-    return managed;
+    return (T) persistenceContext.getEntity(entity.getClass(), id)
+        .map(existing -> {
+          copyState(entity, existing, metadata);
+          return existing;
+        })
+        .getOrElse(() -> {
+          T managed = find((Class<T>) entity.getClass(), id);
+          if (managed != null) {
+            copyState(entity, managed, metadata);
+          } else {
+            persist(entity);
+            managed = entity;
+          }
+          return managed;
+        });
   }
 
   @Override
   public void flush() {
-    checkOpen();
+    verifyOpen();
 
-    // Process inserts
+    // Inserts
     persistenceContext.getInsertQueue().forEach(entity -> {
       EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
       Try.run(() -> {
@@ -158,14 +171,14 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
       }).getOrElseThrow(e -> new RuntimeException("Insert failed", e));
     });
 
-    // Process dirty entities (updates)
+    // Updates
     persistenceContext.detectDirtyEntities().forEach(entity -> {
       EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
       Try.run(() -> entityPersister.update(metadata, entity))
           .getOrElseThrow(e -> new RuntimeException("Update failed", e));
     });
 
-    // Process deletes
+    // Deletes
     persistenceContext.getDeleteQueue().forEach(entity -> {
       EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
       Try.run(() -> entityPersister.delete(metadata, entity))
@@ -177,11 +190,13 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public void clear() {
+    verifyOpen();
     persistenceContext.clear();
   }
 
   @Override
   public boolean contains(Object entity) {
+    verifyOpen(); // Standard JPA doesn't strongly require checkOpen here but it's good practice
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
     Object id = metadata.getId(entity);
     return id != null && persistenceContext.contains(entity.getClass(), id);
@@ -189,6 +204,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public MiniTransaction getTransaction() {
+    verifyOpen();
     if (transaction == null) {
       transaction = new MiniTransactionImpl(connection, this);
     }
@@ -196,15 +212,44 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
+  public void close() {
+    if (open) {
+      open = false;
+      persistenceContext.clear();
+      Try.run(connection::close);
+    }
+  }
+
+  @Override
+  public boolean isOpen() {
+    return open;
+  }
+
+  private void verifyOpen() {
+    if (!open) {
+      throw new IllegalStateException("EntityManager is closed");
+    }
+  }
+
+  @Override
   public <T> MiniTypedQuery<T> createQuery(Class<T> entityClass) {
-    checkOpen();
+    verifyOpen();
     return new MiniTypedQueryImpl<>(entityClass, this);
   }
 
   @Override
-  public <T> T getReference(Class<T> entityClass, Object primaryKey) {
-    return find(entityClass, primaryKey);
+  public <T> TypedQuery<T> createQuery(String qlString, Class<T> resultClass) {
+    verifyOpen();
+    return new MiniTypedQueryImpl<>(qlString, resultClass, this);
   }
+
+  @Override
+  public <T> T getReference(Class<T> entityClass, Object primaryKey) {
+    verifyOpen();
+    return find(entityClass, primaryKey); // Logic similar to EclipseLink for now
+  }
+
+  // --- Stubs / Unsupported ---
 
   @Override
   public void lock(Object entity, LockModeType lockMode) {
@@ -212,32 +257,30 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public void lock(Object entity, LockModeType lockMode, java.util.Map<String, Object> properties) {
+  public void lock(Object entity, LockModeType lockMode, Map<String, Object> properties) {
     throw new UnsupportedOperationException();
   }
 
   @Override
   public void refresh(Object entity) {
-    checkOpen();
+    verifyOpen();
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
     Object id = metadata.getId(entity);
-    if (id == null) {
+    if (id == null)
       throw new IllegalArgumentException("Cannot refresh transient entity");
-    }
 
-    Object fresh = Try.of(() -> entityPersister.load(metadata, id))
+    Object fresh = Try.of(() -> entityPersister.load(metadata, id, this::find))
         .getOrElseThrow(e -> new RuntimeException("Refresh failed", e));
 
-    if (fresh == null) {
-      throw new jakarta.persistence.EntityNotFoundException("Entity not found in DB: " + id);
-    }
+    if (fresh == null)
+      throw new EntityNotFoundException("Entity not found in DB: " + id);
 
     copyState(fresh, entity, metadata);
     persistenceContext.addEntity(entity, metadata, EntityState.MANAGED);
   }
 
   @Override
-  public void refresh(Object entity, java.util.Map<String, Object> properties) {
+  public void refresh(Object entity, Map<String, Object> properties) {
     throw new UnsupportedOperationException();
   }
 
@@ -247,19 +290,17 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public void refresh(Object entity, LockModeType lockMode,
-      java.util.Map<String, Object> properties) {
+  public void refresh(Object entity, LockModeType lockMode, Map<String, Object> properties) {
     throw new UnsupportedOperationException();
   }
 
   @Override
   public void detach(Object entity) {
-    checkOpen();
+    verifyOpen();
     EntityMetadata metadata = factory.getEntityMetadata(entity.getClass());
     Object id = metadata.getId(entity);
-    if (id != null) {
+    if (id != null)
       persistenceContext.removeEntity(entity.getClass(), id);
-    }
   }
 
   @Override
@@ -269,12 +310,14 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public void setProperty(String propertyName, Object value) {
-    throw new UnsupportedOperationException();
+    verifyOpen();
+    // In real implementation we would update 'properties' map or specific flags
+    throw new UnsupportedOperationException("setProperty not implemented");
   }
 
   @Override
-  public java.util.Map<String, Object> getProperties() {
-    return java.util.Collections.emptyMap();
+  public Map<String, Object> getProperties() {
+    return properties;
   }
 
   @Override
@@ -283,8 +326,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public <T> TypedQuery<T> createQuery(
-      CriteriaQuery<T> criteriaQuery) {
+  public <T> TypedQuery<T> createQuery(CriteriaQuery<T> criteriaQuery) {
     throw new UnsupportedOperationException();
   }
 
@@ -295,11 +337,6 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public Query createQuery(CriteriaDelete<?> deleteQuery) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public <T> TypedQuery<T> createQuery(String qlString, Class<T> resultClass) {
     throw new UnsupportedOperationException();
   }
 
@@ -315,7 +352,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
 
   @Override
   public Query createNativeQuery(String sqlString) {
-    checkOpen();
+    verifyOpen();
     return new MiniNativeQueryImpl(sqlString, connection);
   }
 
@@ -340,14 +377,12 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public StoredProcedureQuery createStoredProcedureQuery(String procedureName,
-      Class<?>... resultClasses) {
+  public StoredProcedureQuery createStoredProcedureQuery(String procedureName, Class<?>... resultClasses) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public StoredProcedureQuery createStoredProcedureQuery(String procedureName,
-      String... resultSetMappings) {
+  public StoredProcedureQuery createStoredProcedureQuery(String procedureName, String... resultSetMappings) {
     throw new UnsupportedOperationException();
   }
 
@@ -364,12 +399,10 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   @SuppressWarnings("unchecked")
   @Override
   public <T> T unwrap(Class<T> cls) {
-    if (cls.isAssignableFrom(this.getClass())) {
+    if (cls.isAssignableFrom(this.getClass()))
       return (T) this;
-    }
-    if (cls.isAssignableFrom(Connection.class)) {
+    if (cls.isAssignableFrom(Connection.class))
       return (T) connection;
-    }
     throw new IllegalArgumentException("Cannot unwrap to: " + cls);
   }
 
@@ -422,7 +455,6 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
     return FlushModeType.AUTO;
   }
 
-  // New methods in JPA 3.2+
   @Override
   public void setCacheStoreMode(CacheStoreMode cacheStoreMode) {
   }
@@ -447,8 +479,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public <T> T find(EntityGraph<T> entityGraph, Object primaryKey,
-      FindOption... options) {
+  public <T> T find(EntityGraph<T> entityGraph, Object primaryKey, FindOption... options) {
     throw new UnsupportedOperationException();
   }
 
@@ -458,14 +489,12 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public void lock(Object entity, LockModeType lockMode,
-      LockOption... lockOptions) {
+  public void lock(Object entity, LockModeType lockMode, LockOption... lockOptions) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public <T> TypedQuery<T> createQuery(
-      CriteriaSelect<T> criteriaQuery) {
+  public <T> TypedQuery<T> createQuery(CriteriaSelect<T> criteriaQuery) {
     throw new UnsupportedOperationException();
   }
 
@@ -480,22 +509,6 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode) {
-    return find(entityClass, primaryKey);
-  }
-
-  @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, LockModeType lockMode,
-      java.util.Map<String, Object> properties) {
-    return find(entityClass, primaryKey);
-  }
-
-  @Override
-  public <T> T find(Class<T> entityClass, Object primaryKey, java.util.Map<String, Object> properties) {
-    return find(entityClass, primaryKey);
-  }
-
-  @Override
   public <C, T> T callWithConnection(ConnectionFunction<C, T> function) {
     throw new UnsupportedOperationException();
   }
@@ -505,21 +518,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
     throw new UnsupportedOperationException();
   }
 
-  @Override
-  public boolean isOpen() {
-    return open;
-  }
-
-  @Override
-  public void close() {
-    if (open) {
-      open = false;
-      persistenceContext.clear();
-      Try.run(connection::close);
-    }
-  }
-
-  // ========== Internal methods for other internal classes ==========
+  // --- Internals ---
 
   Connection getConnection() {
     return connection;
@@ -534,15 +533,9 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   private void copyState(Object source, Object target, EntityMetadata metadata) {
-    metadata.getColumns().forEach(field -> {
+    metadata.getUpdatableFields().forEach(field -> {
       Object value = field.getValue(source);
       field.setValue(target, value);
     });
-  }
-
-  private void checkOpen() {
-    if (!open) {
-      throw new IllegalStateException("EntityManager is closed");
-    }
   }
 }

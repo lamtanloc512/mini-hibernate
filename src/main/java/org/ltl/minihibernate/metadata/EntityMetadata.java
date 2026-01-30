@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * Holds metadata about a mapped entity class.
- * Stores information from @Entity, @Table, plus field and relationship metadata.
+ * Stores information from @Entity, @Table, plus field and relationship
+ * metadata.
  */
 public class EntityMetadata {
 
@@ -24,9 +25,17 @@ public class EntityMetadata {
     this.relationships = Collections.unmodifiableList(new ArrayList<>(builder.relationships));
   }
 
-  public Class<?> getEntityClass() { return entityClass; }
-  public String getTableName() { return tableName; }
-  public FieldMetadata getIdField() { return idField; }
+  public Class<?> getEntityClass() {
+    return entityClass;
+  }
+
+  public String getTableName() {
+    return tableName;
+  }
+
+  public FieldMetadata getIdField() {
+    return idField;
+  }
 
   /** All columns including ID (excludes relationships). */
   public List<FieldMetadata> getAllColumns() {
@@ -37,10 +46,14 @@ public class EntityMetadata {
   }
 
   /** Non-ID columns only (excludes relationships). */
-  public List<FieldMetadata> getColumns() { return columns; }
+  public List<FieldMetadata> getColumns() {
+    return columns;
+  }
 
   /** All relationship fields (@ManyToOne, @OneToMany, etc.). */
-  public List<FieldMetadata> getRelationships() { return relationships; }
+  public List<FieldMetadata> getRelationships() {
+    return relationships;
+  }
 
   /** Get @ManyToOne relationships only. */
   public List<FieldMetadata> getManyToOneRelationships() {
@@ -56,6 +69,28 @@ public class EntityMetadata {
         .toList();
   }
 
+  /**
+   * Returns all fields that map to a database column (ID + Basic Cols +
+   * ManyToOne).
+   */
+  public List<FieldMetadata> getPersistableFields() {
+    List<FieldMetadata> all = new ArrayList<>();
+    all.add(idField);
+    all.addAll(columns);
+    all.addAll(getManyToOneRelationships());
+    return all;
+  }
+
+  /**
+   * Returns fields for UPDATE statements (Basic Cols + ManyToOne).
+   */
+  public List<FieldMetadata> getUpdatableFields() {
+    List<FieldMetadata> all = new ArrayList<>();
+    all.addAll(columns);
+    all.addAll(getManyToOneRelationships());
+    return all;
+  }
+
   public Object newInstance() {
     try {
       return entityClass.getDeclaredConstructor().newInstance();
@@ -64,8 +99,13 @@ public class EntityMetadata {
     }
   }
 
-  public Object getId(Object entity) { return idField.getValue(entity); }
-  public void setId(Object entity, Object id) { idField.setValue(entity, id); }
+  public Object getId(Object entity) {
+    return idField.getValue(entity);
+  }
+
+  public void setId(Object entity, Object id) {
+    idField.setValue(entity, id);
+  }
 
   @Override
   public String toString() {

@@ -6,6 +6,8 @@ import org.ltl.minihibernate.sql.SQLGenerator;
 
 import java.sql.*;
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Executes CRUD operations for entities.
@@ -15,10 +17,13 @@ public class EntityPersister {
 
   private final Connection connection;
   private final SQLGenerator sqlGenerator;
+  private final Function<Class<?>, EntityMetadata> metadataLookup;
 
-  public EntityPersister(Connection connection, SQLGenerator sqlGenerator) {
+  public EntityPersister(Connection connection, SQLGenerator sqlGenerator,
+      Function<Class<?>, EntityMetadata> metadataLookup) {
     this.connection = connection;
     this.sqlGenerator = sqlGenerator;
+    this.metadataLookup = metadataLookup;
   }
 
   /**
@@ -28,7 +33,7 @@ public class EntityPersister {
    */
   public Object insert(EntityMetadata metadata, Object entity) throws SQLException {
     String sql = sqlGenerator.generateInsert(metadata);
-    List<FieldMetadata> columns = metadata.getAllColumns();
+    List<FieldMetadata> columns = metadata.getPersistableFields();
 
     // Check if ID is auto-generated
     boolean hasGeneratedId = metadata.getIdField().isGeneratedValue();
@@ -42,7 +47,8 @@ public class EntityPersister {
         if (field.isId() && hasGeneratedId) {
           continue; // Skip auto-generated ID
         }
-        Object value = field.getValue(entity);
+
+        Object value = extractValue(entity, field);
         ps.setObject(paramIndex++, value);
       }
 
@@ -65,8 +71,10 @@ public class EntityPersister {
 
   /**
    * Loads an entity from the database by ID.
+   * relationResolver IS THE ENTITY MANAGER::FIND
    */
-  public Object load(EntityMetadata metadata, Object id) throws SQLException {
+  public Object load(EntityMetadata metadata, Object id, BiFunction<Class<?>, Object, Object> relationResolver)
+      throws SQLException {
     String sql = sqlGenerator.generateSelectById(metadata);
 
     try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -74,7 +82,7 @@ public class EntityPersister {
 
       try (ResultSet rs = ps.executeQuery()) {
         if (rs.next()) {
-          return mapResultSet(rs, metadata);
+          return mapResultSet(rs, metadata, relationResolver);
         }
       }
     }
@@ -87,13 +95,13 @@ public class EntityPersister {
    */
   public void update(EntityMetadata metadata, Object entity) throws SQLException {
     String sql = sqlGenerator.generateUpdate(metadata);
-    List<FieldMetadata> nonIdColumns = metadata.getColumns();
+    List<FieldMetadata> updatableColumns = metadata.getUpdatableFields();
 
     try (PreparedStatement ps = connection.prepareStatement(sql)) {
       // Set column values
       int paramIndex = 1;
-      for (FieldMetadata field : nonIdColumns) {
-        Object value = field.getValue(entity);
+      for (FieldMetadata field : updatableColumns) {
+        Object value = extractValue(entity, field);
         ps.setObject(paramIndex++, value);
       }
 
@@ -121,19 +129,44 @@ public class EntityPersister {
   /**
    * Maps a ResultSet row to an entity instance.
    */
-  private Object mapResultSet(ResultSet rs, EntityMetadata metadata) throws SQLException {
+  private Object mapResultSet(ResultSet rs, EntityMetadata metadata,
+      BiFunction<Class<?>, Object, Object> relationResolver) throws SQLException {
     Object entity = metadata.newInstance();
 
-    for (FieldMetadata field : metadata.getAllColumns()) {
+    for (FieldMetadata field : metadata.getPersistableFields()) {
       String columnName = field.getColumnName();
       Object value = rs.getObject(columnName);
 
-      // Handle type conversion if needed
-      value = convertType(value, field.getJavaType());
+      if (field.isManyToOne() && value != null) {
+        // Resolve relationship
+        if (relationResolver != null) {
+          value = relationResolver.apply(field.getTargetEntity(), value);
+        }
+      } else {
+        // Handle type conversion if needed
+        value = convertType(value, field.getJavaType());
+      }
+
       field.setValue(entity, value);
     }
 
     return entity;
+  }
+
+  private Object extractValue(Object entity, FieldMetadata field) {
+    Object value = field.getValue(entity);
+    if (field.isManyToOne() && value != null) {
+      // It's an entity, we need its ID
+      try {
+        // Assuming the object is an entity, getting its metadata
+        // We use the metadataLookup function
+        Object relatedId = metadataLookup.apply(value.getClass()).getId(value);
+        return relatedId;
+      } catch (Exception e) {
+        throw new RuntimeException("Could not extract ID from related entity " + value, e);
+      }
+    }
+    return value;
   }
 
   /**

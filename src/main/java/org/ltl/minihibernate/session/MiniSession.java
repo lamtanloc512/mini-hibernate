@@ -35,7 +35,7 @@ public class MiniSession implements Closeable {
     this.sessionFactory = sessionFactory;
     this.persistenceContext = new PersistenceContext();
     this.sqlGenerator = new SQLGenerator();
-    this.entityPersister = new EntityPersister(connection, sqlGenerator);
+    this.entityPersister = new EntityPersister(connection, sqlGenerator, sessionFactory::getEntityMetadata);
   }
 
   // ==================== CRUD Operations ====================
@@ -80,7 +80,7 @@ public class MiniSession implements Closeable {
     }
 
     // Query database
-    return Try.of(() -> entityPersister.load(metadata, id))
+    return Try.of(() -> entityPersister.load(metadata, id, this::find))
         .map(entity -> {
           if (entity != null) {
             persistenceContext.addEntity(entity, metadata, EntityState.MANAGED);

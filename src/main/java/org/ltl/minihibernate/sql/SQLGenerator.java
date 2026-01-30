@@ -21,7 +21,7 @@ public class SQLGenerator {
     StringBuilder sql = new StringBuilder();
     sql.append("INSERT INTO ").append(metadata.getTableName()).append(" (");
 
-    java.util.List<FieldMetadata> columns = metadata.getAllColumns();
+    java.util.List<FieldMetadata> columns = metadata.getPersistableFields();
     boolean hasGeneratedId = metadata.getIdField().isGeneratedValue();
 
     List<String> columnNames = List.ofAll(columns)
@@ -45,7 +45,7 @@ public class SQLGenerator {
     StringBuilder sql = new StringBuilder();
     sql.append("SELECT ");
 
-    List<String> columnNames = List.ofAll(metadata.getAllColumns())
+    List<String> columnNames = List.ofAll(metadata.getPersistableFields())
         .map(FieldMetadata::getColumnName);
 
     sql.append(columnNames.mkString(", "));
@@ -64,7 +64,7 @@ public class SQLGenerator {
     StringBuilder sql = new StringBuilder();
     sql.append("SELECT ");
 
-    List<String> columnNames = List.ofAll(metadata.getAllColumns())
+    List<String> columnNames = List.ofAll(metadata.getPersistableFields())
         .map(FieldMetadata::getColumnName);
 
     sql.append(columnNames.mkString(", "));
@@ -83,7 +83,7 @@ public class SQLGenerator {
     sql.append("UPDATE ").append(metadata.getTableName()).append(" SET ");
 
     // Non-ID columns
-    List<String> setClauses = List.ofAll(metadata.getColumns())
+    List<String> setClauses = List.ofAll(metadata.getUpdatableFields())
         .map(f -> f.getColumnName() + " = ?");
 
     sql.append(setClauses.mkString(", "));
@@ -120,7 +120,7 @@ public class SQLGenerator {
     StringBuilder sql = new StringBuilder();
     sql.append("SELECT ");
 
-    List<String> columnNames = List.ofAll(metadata.getAllColumns())
+    List<String> columnNames = List.ofAll(metadata.getPersistableFields())
         .map(FieldMetadata::getColumnName);
 
     sql.append(columnNames.mkString(", "));
