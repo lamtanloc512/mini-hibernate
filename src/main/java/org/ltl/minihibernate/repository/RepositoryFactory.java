@@ -98,6 +98,11 @@ public class RepositoryFactory {
         return null;
       }
 
+      // Handle query derivation (findBy...)
+      if (methodName.startsWith("findBy")) {
+        return executeDynamicQuery(methodName, method, args);
+      }
+
       // Handle findAll with different parameter types
       if ("findAll".equals(methodName) && args != null && args.length > 0) {
         if (args[0] instanceof Pageable pageable) {
@@ -119,6 +124,47 @@ public class RepositoryFactory {
         case "equals" -> proxy == args[0];
         default -> throw new UnsupportedOperationException("Method not implemented: " + methodName);
       };
+    }
+
+    /**
+     * Executes a dynamic query parsed from the method name.
+     * E.g. findByTitleAndAuthor -> SELECT * FROM ... WHERE title = ? AND author = ?
+     */
+    private Object executeDynamicQuery(String methodName, Method method, Object[] args) {
+      String criteriaPart = methodName.substring(6); // Remove "findBy"
+      String[] parts = criteriaPart.split("And");
+
+      StringBuilder sql = new StringBuilder("SELECT * FROM ")
+          .append(metadata.getTableName())
+          .append(" WHERE ");
+
+      for (int i = 0; i < parts.length; i++) {
+        if (i > 0)
+          sql.append(" AND ");
+        String propertyName = parts[i].substring(0, 1).toLowerCase() + parts[i].substring(1);
+        String columnName = findColumnName(propertyName);
+        sql.append(columnName).append(" = ?");
+      }
+
+      return Try.withResources(() -> emFactory.createEntityManager())
+          .of(em -> {
+            Connection conn = em.unwrap(Connection.class);
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+              setParameters(ps, args);
+              try (ResultSet rs = ps.executeQuery()) {
+                return mapResultsByReturnType(rs, method.getReturnType());
+              }
+            }
+          })
+          .getOrElseThrow(e -> new RuntimeException("Dynamic query failed: " + methodName, e));
+    }
+
+    private String findColumnName(String propertyName) {
+      return metadata.getAllColumns().stream()
+          .filter(f -> f.getFieldName().equals(propertyName))
+          .map(FieldMetadata::getColumnName)
+          .findFirst()
+          .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + propertyName));
     }
 
     /**
@@ -250,7 +296,6 @@ public class RepositoryFactory {
 
     // ==================== Pagination Methods ====================
 
-    @SuppressWarnings("unchecked")
     private Page<Object> executeFindAllPaged(Pageable pageable) {
       String idColumn = metadata.getIdField().getColumnName();
       StringBuilder sql = new StringBuilder()
@@ -285,7 +330,6 @@ public class RepositoryFactory {
           .getOrElseThrow(e -> new RuntimeException("FindAllPaged failed", e));
     }
 
-    @SuppressWarnings("unchecked")
     private CursorPage<Object> executeFindAllCursor(CursorPageable cursorPageable) {
       String idColumn = metadata.getIdField().getColumnName();
       StringBuilder sql = new StringBuilder()

@@ -1,17 +1,14 @@
 package org.ltl.minihibernate.api;
 
+import jakarta.persistence.EntityManager;
 import java.io.Closeable;
 
 /**
  * MiniEntityManager - The "JPA-like" interface.
  * 
- * This is ONLY an interface (like javax.persistence.EntityManager).
- * The implementation is in a SEPARATE package: org.ltl.minihibernate.internal
- * 
- * When you debug, you'll see this interface but the actual code
- * runs in MiniEntityManagerImpl.
+ * This is an extension of standard JPA EntityManager.
  */
-public interface MiniEntityManager extends Closeable {
+public interface MiniEntityManager extends EntityManager, Closeable {
 
   /**
    * Makes a transient entity persistent.

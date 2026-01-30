@@ -23,6 +23,7 @@ public class MiniHibernateDemo {
     try (MiniSessionFactory sessionFactory = MiniSessionFactory.builder()
         .url("jdbc:mysql://localhost:3307/test_db")
         .username("root")
+
         .password("p@ssword")
         .addEntityClass(User.class)
         .build()) {

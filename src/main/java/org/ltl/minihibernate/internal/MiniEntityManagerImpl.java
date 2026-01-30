@@ -180,7 +180,145 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
+  public <T> T getReference(Class<T> entityClass, Object primaryKey) {
+    return find(entityClass, primaryKey);
+  }
+
+  @Override
+  public void lock(Object entity, jakarta.persistence.LockModeType lockMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void lock(Object entity, jakarta.persistence.LockModeType lockMode, java.util.Map<String, Object> properties) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void refresh(Object entity) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void refresh(Object entity, java.util.Map<String, Object> properties) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void refresh(Object entity, jakarta.persistence.LockModeType lockMode) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void refresh(Object entity, jakarta.persistence.LockModeType lockMode,
+      java.util.Map<String, Object> properties) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void detach(Object entity) {
+    persistenceContext.clear();
+  } // Simplified
+
+  @Override
+  public jakarta.persistence.LockModeType getLockMode(Object entity) {
+    return jakarta.persistence.LockModeType.NONE;
+  }
+
+  @Override
+  public void setProperty(String propertyName, Object value) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public java.util.Map<String, Object> getProperties() {
+    return java.util.Collections.emptyMap();
+  }
+
+  @Override
+  public jakarta.persistence.Query createQuery(String qlString) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.TypedQuery<T> createQuery(
+      jakarta.persistence.criteria.CriteriaQuery<T> criteriaQuery) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createQuery(jakarta.persistence.criteria.CriteriaUpdate<?> updateQuery) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createQuery(jakarta.persistence.criteria.CriteriaDelete<?> deleteQuery) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.TypedQuery<T> createQuery(String qlString, Class<T> resultClass) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createNamedQuery(String name) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.TypedQuery<T> createNamedQuery(String name, Class<T> resultClass) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createNativeQuery(String sqlString) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createNativeQuery(String sqlString, Class resultClass) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.Query createNativeQuery(String sqlString, String resultSetMapping) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.StoredProcedureQuery createNamedStoredProcedureQuery(String name) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName,
+      Class... resultClasses) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.StoredProcedureQuery createStoredProcedureQuery(String procedureName,
+      String... resultSetMappings) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void joinTransaction() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isJoinedToTransaction() {
+    return transaction != null && transaction.isActive();
+  }
+
+  @Override
   public <T> T unwrap(Class<T> cls) {
     if (cls.isAssignableFrom(this.getClass())) {
       return (T) this;
@@ -189,6 +327,138 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
       return (T) connection;
     }
     throw new IllegalArgumentException("Cannot unwrap to: " + cls);
+  }
+
+  @Override
+  public Object getDelegate() {
+    return this;
+  }
+
+  @Override
+  public jakarta.persistence.EntityManagerFactory getEntityManagerFactory() {
+    return factory;
+  }
+
+  @Override
+  public jakarta.persistence.criteria.CriteriaBuilder getCriteriaBuilder() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.metamodel.Metamodel getMetamodel() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.EntityGraph<T> createEntityGraph(Class<T> rootType) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.EntityGraph<?> createEntityGraph(String graphName) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public jakarta.persistence.EntityGraph<?> getEntityGraph(String graphName) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> java.util.List<jakarta.persistence.EntityGraph<? super T>> getEntityGraphs(Class<T> entityClass) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setFlushMode(jakarta.persistence.FlushModeType flushMode) {
+  }
+
+  @Override
+  public jakarta.persistence.FlushModeType getFlushMode() {
+    return jakarta.persistence.FlushModeType.AUTO;
+  }
+
+  // New methods in JPA 3.2+
+  @Override
+  public void setCacheStoreMode(jakarta.persistence.CacheStoreMode cacheStoreMode) {
+  }
+
+  @Override
+  public jakarta.persistence.CacheStoreMode getCacheStoreMode() {
+    return jakarta.persistence.CacheStoreMode.USE;
+  }
+
+  @Override
+  public void setCacheRetrieveMode(jakarta.persistence.CacheRetrieveMode cacheRetrieveMode) {
+  }
+
+  @Override
+  public jakarta.persistence.CacheRetrieveMode getCacheRetrieveMode() {
+    return jakarta.persistence.CacheRetrieveMode.USE;
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.FindOption... options) {
+    return find(entityClass, primaryKey);
+  }
+
+  @Override
+  public <T> T find(jakarta.persistence.EntityGraph<T> entityGraph, Object primaryKey,
+      jakarta.persistence.FindOption... options) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void refresh(Object entity, jakarta.persistence.RefreshOption... options) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void lock(Object entity, jakarta.persistence.LockModeType lockMode,
+      jakarta.persistence.LockOption... lockOptions) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.TypedQuery<T> createQuery(
+      jakarta.persistence.criteria.CriteriaSelect<T> criteriaQuery) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> jakarta.persistence.TypedQuery<T> createQuery(jakarta.persistence.TypedQueryReference<T> queryReference) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <T> T getReference(T entity) {
+    return entity;
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.LockModeType lockMode) {
+    return find(entityClass, primaryKey);
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, jakarta.persistence.LockModeType lockMode,
+      java.util.Map<String, Object> properties) {
+    return find(entityClass, primaryKey);
+  }
+
+  @Override
+  public <T> T find(Class<T> entityClass, Object primaryKey, java.util.Map<String, Object> properties) {
+    return find(entityClass, primaryKey);
+  }
+
+  @Override
+  public <C, T> T callWithConnection(jakarta.persistence.ConnectionFunction<C, T> function) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public <C> void runWithConnection(jakarta.persistence.ConnectionConsumer<C> consumer) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

@@ -58,6 +58,26 @@ public class MiniTransactionImpl implements MiniTransaction {
     return active;
   }
 
+  @Override
+  public void setRollbackOnly() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean getRollbackOnly() {
+    return false;
+  }
+
+  @Override
+  public void setTimeout(Integer seconds) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Integer getTimeout() {
+    return null;
+  }
+
   private void checkActive() {
     if (!active) {
       throw new IllegalStateException("No active transaction");

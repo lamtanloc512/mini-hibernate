@@ -56,7 +56,7 @@ public class InterfaceImplDemo {
         })
         .andThen((u) -> {
           System.out.println("User: " + u);
-        }).andFinallyTry(() -> factory.close());
+        });
 
     try (factory) {
       // Create table first
