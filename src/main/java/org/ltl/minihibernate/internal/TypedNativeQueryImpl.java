@@ -5,29 +5,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
 
 import org.ltl.minihibernate.metadata.EntityMetadata;
 import org.ltl.minihibernate.metadata.MetadataParser;
 import org.ltl.minihibernate.session.EntityState;
-
-import jakarta.persistence.CacheRetrieveMode;
-import jakarta.persistence.CacheStoreMode;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FlushModeType;
-import jakarta.persistence.LockModeType;
-import jakarta.persistence.Parameter;
-import jakarta.persistence.TemporalType;
-import jakarta.persistence.TypedQuery;
 
 /**
  * Extended native query implementation with entity and DTO mapping support.
  *
  * @param <T> The result type
  */
-public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements TypedQuery<T> {
+public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl<T> {
 
   private final Class<T> resultClass;
   private final MiniEntityManagerImpl entityManager;
@@ -84,18 +72,18 @@ public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements Type
 
   @Override
   @SuppressWarnings({ "unchecked", "rawtypes" })
-  public List getResultList() {
+  public java.util.List getResultList() {
     // If we have entityClass or it's an entity, use getEntityResultList
-    if (entityClass != null || (resultClass != null && resultClass.isAnnotationPresent(Entity.class))) {
+    if (entityClass != null || (resultClass != null && resultClass.isAnnotationPresent(jakarta.persistence.Entity.class))) {
       return getEntityResultList();
     }
     return getTypedResultList();
   }
 
   /** Get typed results as a list of T. */
-  public List<T> getTypedResultList() {
+  public java.util.List<T> getTypedResultList() {
     String jdbcSql = getJdbcSql();
-    List<T> results = new ArrayList<>();
+    java.util.List<T> results = new ArrayList<>();
 
     try (PreparedStatement stmt = getConnection().prepareStatement(jdbcSql)) {
       for (int i = 0; i < parameters.size(); i++) {
@@ -118,7 +106,7 @@ public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements Type
   @Override
   public T getSingleResult() {
     @SuppressWarnings("unchecked")
-    List<T> results = getResultList();
+    java.util.List<T> results = getResultList();
     if (results.isEmpty())
       return null;
     return results.get(0);
@@ -132,7 +120,7 @@ public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements Type
     }
 
     // Check for entity mapping
-    if ((entityClass != null || (resultClass != null && resultClass.isAnnotationPresent(Entity.class))) 
+    if ((entityClass != null || (resultClass != null && resultClass.isAnnotationPresent(jakarta.persistence.Entity.class))) 
         && !resultClass.isArray() && !resultClass.equals(Object.class)) {
       Class<?> targetEntityClass = entityClass != null ? entityClass : resultClass;
       return (T) mapper.mapToEntity(rs, targetEntityClass);
@@ -167,9 +155,9 @@ public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements Type
 
   /** Get results as a list of entities, registered in the persistence context. */
   @SuppressWarnings("unchecked")
-  public List<T> getEntityResultList() {
+  public java.util.List<T> getEntityResultList() {
     String jdbcSql = getJdbcSql();
-    List<T> results = new ArrayList<>();
+    java.util.List<T> results = new ArrayList<>();
 
     try (PreparedStatement stmt = getConnection().prepareStatement(jdbcSql)) {
       for (int i = 0; i < parameters.size(); i++) {
@@ -194,110 +182,53 @@ public class TypedNativeQueryImpl<T> extends MiniNativeQueryImpl implements Type
     return results;
   }
 
-  // --- TypedQuery implementation overloads ---
+  // --- TypedQuery implementation overloads for chaining ---
 
   @Override
-  public TypedQuery<T> setMaxResults(int maxResults) {
+  public TypedNativeQueryImpl<T> setMaxResults(int maxResults) {
     super.setMaxResults(maxResults);
     return this;
   }
 
   @Override
-  public TypedQuery<T> setFirstResult(int startPosition) {
+  public TypedNativeQueryImpl<T> setFirstResult(int startPosition) {
     super.setFirstResult(startPosition);
     return this;
   }
 
   @Override
-  public TypedQuery<T> setHint(String hintName, Object value) {
+  public TypedNativeQueryImpl<T> setHint(String hintName, Object value) {
     super.setHint(hintName, value);
     return this;
   }
 
   @Override
-  public <U> TypedQuery<T> setParameter(Parameter<U> param, U value) {
-    super.setParameter(param, value);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(Parameter<Calendar> param, Calendar value, TemporalType temporalType) {
-    super.setParameter(param, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(Parameter<Date> param, Date value, TemporalType temporalType) {
-    super.setParameter(param, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(String name, Object value) {
-    super.setParameter(name, value);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(String name, Calendar value, TemporalType temporalType) {
-    super.setParameter(name, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(String name, Date value, TemporalType temporalType) {
-    super.setParameter(name, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(int position, Object value) {
-    super.setParameter(position, value);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(int position, Calendar value, TemporalType temporalType) {
-    super.setParameter(position, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(int position, Date value, TemporalType temporalType) {
-    super.setParameter(position, value, temporalType);
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setFlushMode(FlushModeType flushMode) {
+  public TypedNativeQueryImpl<T> setFlushMode(jakarta.persistence.FlushModeType flushMode) {
     super.setFlushMode(flushMode);
     return this;
   }
 
   @Override
-  public TypedQuery<T> setLockMode(LockModeType lockMode) {
+  public TypedNativeQueryImpl<T> setLockMode(jakarta.persistence.LockModeType lockMode) {
+    super.setLockMode(lockMode);
     return this;
   }
 
   @Override
-  public T getSingleResultOrNull() {
-    @SuppressWarnings("unchecked")
-    List<T> results = getResultList();
-    return results.isEmpty() ? null : results.get(0);
-  }
-
-  @Override
-  public TypedQuery<T> setCacheRetrieveMode(CacheRetrieveMode cacheRetrieveMode) {
+  public TypedNativeQueryImpl<T> setCacheRetrieveMode(jakarta.persistence.CacheRetrieveMode cacheRetrieveMode) {
+    super.setCacheRetrieveMode(cacheRetrieveMode);
     return this;
   }
 
   @Override
-  public TypedQuery<T> setCacheStoreMode(CacheStoreMode cacheStoreMode) {
+  public TypedNativeQueryImpl<T> setCacheStoreMode(jakarta.persistence.CacheStoreMode cacheStoreMode) {
+    super.setCacheStoreMode(cacheStoreMode);
     return this;
   }
 
   @Override
-  public TypedQuery<T> setTimeout(Integer timeout) {
+  public TypedNativeQueryImpl<T> setTimeout(Integer timeout) {
+    super.setTimeout(timeout);
     return this;
   }
 }

@@ -1,37 +1,31 @@
 package org.ltl.minihibernate.internal;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
 import org.ltl.minihibernate.api.MiniTypedQuery;
 import org.ltl.minihibernate.metadata.EntityMetadata;
 import org.ltl.minihibernate.metadata.FieldMetadata;
 import org.ltl.minihibernate.query.EnhancedJPQLParser;
 import org.ltl.minihibernate.session.EntityState;
 import org.ltl.minihibernate.sql.SQLGenerator;
+
 import io.vavr.collection.List;
 import io.vavr.control.Try;
-import jakarta.persistence.CacheRetrieveMode;
-import jakarta.persistence.CacheStoreMode;
-import jakarta.persistence.FlushModeType;
-import jakarta.persistence.LockModeType;
 import jakarta.persistence.Parameter;
-import jakarta.persistence.TemporalType;
 import jakarta.persistence.TypedQuery;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * MiniTypedQueryImpl - Query implementation.
  */
-public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
+public class MiniTypedQueryImpl<T> extends AbstractQuery<T> implements MiniTypedQuery<T> {
 
+  @SuppressWarnings("unused")
   private final Class<T> entityClass;
   private final MiniEntityManagerImpl entityManager;
   private final EntityMetadata metadata;
@@ -44,10 +38,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
   // JPQL state
   private String jpql = null;
   private final Map<String, Object> namedParams = new HashMap<>();
-
-  // Standard state
-  private Integer maxResults = null;
-  private Integer firstResult = null;
 
   MiniTypedQueryImpl(Class<T> entityClass, MiniEntityManagerImpl entityManager) {
     this.entityClass = entityClass;
@@ -78,14 +68,14 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
   }
 
   @Override
-  public MiniTypedQueryImpl<T> setMaxResults(int maxResult) {
-    this.maxResults = maxResult;
+  public MiniTypedQueryImpl<T> setMaxResults(int maxResults) {
+    super.setMaxResults(maxResults);
     return this;
   }
 
   @Override
   public MiniTypedQueryImpl<T> setFirstResult(int startPosition) {
-    this.firstResult = startPosition;
+    super.setFirstResult(startPosition);
     return this;
   }
 
@@ -179,42 +169,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
     return this;
   }
 
-  // Stubs for other TypedQuery methods
-  @Override
-  public TypedQuery<T> setHint(String hintName, Object value) {
-    return this;
-  }
-
-  @Override
-  public Map<String, Object> getHints() {
-    return new HashMap<>();
-  }
-
-  @Override
-  public TypedQuery<T> setFlushMode(FlushModeType flushMode) {
-    return this;
-  }
-
-  @Override
-  public FlushModeType getFlushMode() {
-    return FlushModeType.AUTO;
-  }
-
-  @Override
-  public TypedQuery<T> setLockMode(LockModeType lockMode) {
-    return this;
-  }
-
-  @Override
-  public LockModeType getLockMode() {
-    return LockModeType.NONE;
-  }
-
-  @Override
-  public <T1> T1 unwrap(Class<T1> cls) {
-    return null;
-  }
-
   @Override
   public Parameter<?> getParameter(String name) {
     return new Parameter<Object>() {
@@ -256,16 +210,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
   }
 
   @Override
-  public <T1> Parameter<T1> getParameter(String name, Class<T1> type) {
-    return null;
-  }
-
-  @Override
-  public <T1> Parameter<T1> getParameter(int position, Class<T1> type) {
-    return null;
-  }
-
-  @Override
   public boolean isBound(Parameter<?> param) {
     if (param.getName() != null) {
       return namedParams.containsKey(param.getName());
@@ -277,18 +221,8 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
   }
 
   @Override
-  public <T1> T1 getParameterValue(Parameter<T1> param) {
-    return null;
-  }
-
-  @Override
   public Object getParameterValue(String name) {
     return namedParams.get(name);
-  }
-
-  @Override
-  public Object getParameterValue(int position) {
-    return null;
   }
 
   @Override
@@ -305,36 +239,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
       }
     }
     return result;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(Parameter<Calendar> param, Calendar value, TemporalType temporalType) {
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(Parameter<Date> param, Date value, TemporalType temporalType) {
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(String name, Calendar value, TemporalType temporalType) {
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(String name, Date value, TemporalType temporalType) {
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(int position, Calendar value, TemporalType temporalType) {
-    return this;
-  }
-
-  @Override
-  public TypedQuery<T> setParameter(int position, Date value, TemporalType temporalType) {
-    return this;
   }
 
   // Generic <T> definition from interface
@@ -361,11 +265,6 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
   @Override
   public int executeUpdate() {
     throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Stream<T> getResultStream() {
-    return getResultList().stream();
   }
 
   // ==================== Private Helpers ====================
@@ -409,59 +308,5 @@ public class MiniTypedQueryImpl<T> implements MiniTypedQuery<T> {
         return ((Number) value).intValue();
     }
     return value;
-  }
-
-  @Override
-  public int getMaxResults() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getMaxResults'");
-  }
-
-  @Override
-  public int getFirstResult() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getFirstResult'");
-  }
-
-  @Override
-  public CacheRetrieveMode getCacheRetrieveMode() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getCacheRetrieveMode'");
-  }
-
-  @Override
-  public CacheStoreMode getCacheStoreMode() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getCacheStoreMode'");
-  }
-
-  @Override
-  public Integer getTimeout() {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getTimeout'");
-  }
-
-  @Override
-  public T getSingleResultOrNull() {
-    java.util.List<T> results = getResultList();
-    return results.isEmpty() ? null : results.get(0);
-  }
-
-  @Override
-  public TypedQuery<T> setCacheRetrieveMode(CacheRetrieveMode cacheRetrieveMode) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'setCacheRetrieveMode'");
-  }
-
-  @Override
-  public TypedQuery<T> setCacheStoreMode(CacheStoreMode cacheStoreMode) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'setCacheStoreMode'");
-  }
-
-  @Override
-  public TypedQuery<T> setTimeout(Integer timeout) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'setTimeout'");
   }
 }

@@ -373,7 +373,7 @@ public class MiniEntityManagerImpl implements MiniEntityManager {
   @Override
   public Query createNativeQuery(String sql) {
     verifyOpen();
-    return new MiniNativeQueryImpl(sql, connection);
+    return new MiniNativeQueryImpl<>(sql, connection);
   }
 
   @Override

@@ -1,10 +1,5 @@
 package org.ltl.minihibernate.internal;
 
-import org.ltl.minihibernate.metadata.EntityMetadata;
-import org.ltl.minihibernate.metadata.FieldMetadata;
-import org.ltl.minihibernate.metadata.MetadataParser;
-import org.ltl.minihibernate.session.EntityState;
-
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -13,6 +8,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
+
+import org.ltl.minihibernate.metadata.EntityMetadata;
+import org.ltl.minihibernate.metadata.FieldMetadata;
+import org.ltl.minihibernate.metadata.MetadataParser;
 
 /**
  * Factory for creating lazy-loading proxies.

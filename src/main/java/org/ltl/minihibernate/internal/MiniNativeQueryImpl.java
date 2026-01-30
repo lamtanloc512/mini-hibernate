@@ -4,18 +4,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import jakarta.persistence.*;
-import jakarta.persistence.FlushModeType;
-import jakarta.persistence.LockModeType;
 import jakarta.persistence.Parameter;
-import jakarta.persistence.TemporalType;
 
-public class MiniNativeQueryImpl implements Query {
+public class MiniNativeQueryImpl<T> extends AbstractQuery<T> {
 
   protected final String sql;
   protected final Connection connection;
@@ -41,21 +34,23 @@ public class MiniNativeQueryImpl implements Query {
 
 
   @Override
-  public List<Object[]> getResultList() {
+  public List<T> getResultList() {
     String jdbcSql = getJdbcSql();
     try (PreparedStatement stmt = connection.prepareStatement(jdbcSql)) {
       for (int i = 0; i < parameters.size(); i++) {
         stmt.setObject(i + 1, parameters.get(i));
       }
       try (ResultSet rs = stmt.executeQuery()) {
-        List<Object[]> results = new ArrayList<>();
+        List<T> results = new ArrayList<>();
         int columnCount = rs.getMetaData().getColumnCount();
         while (rs.next()) {
           Object[] row = new Object[columnCount];
           for (int i = 1; i <= columnCount; i++) {
             row[i - 1] = rs.getObject(i);
           }
-          results.add(row);
+          @SuppressWarnings("unchecked")
+          T result = (T) row;
+          results.add(result);
         }
         return results;
       }
@@ -65,8 +60,8 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public Object getSingleResult() {
-    List<Object[]> results = getResultList();
+  public T getSingleResult() {
+    List<T> results = getResultList();
     if (results.isEmpty())
       return null;
     return results.get(0);
@@ -86,7 +81,7 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public Query setParameter(int position, Object value) {
+  public MiniNativeQueryImpl<T> setParameter(int position, Object value) {
     while (parameters.size() < position)
       parameters.add(null);
     parameters.set(position - 1, value);
@@ -94,82 +89,11 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public Query setMaxResults(int maxResult) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int getMaxResults() {
-    return Integer.MAX_VALUE;
-  }
-
-  @Override
-  public Query setFirstResult(int startPosition) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int getFirstResult() {
-    return 0;
-  }
-
-  @Override
-  public Query setHint(String hintName, Object value) {
-    return this;
-  }
-
-  @Override
-  public Map<String, Object> getHints() {
-    return java.util.Collections.emptyMap();
-  }
-
-  @Override
-  public <T> Query setParameter(Parameter<T> param, T value) {
+  public <U> MiniNativeQueryImpl<T> setParameter(Parameter<U> param, U value) {
     if (param.getPosition() != null) {
       return setParameter(param.getPosition(), value);
     }
     throw new UnsupportedOperationException("Named parameters not supported in native queries");
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(Parameter<Calendar> param, Calendar value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(Parameter<Date> param, Date value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Query setParameter(String name, Object value) {
-    throw new UnsupportedOperationException("Named parameters not supported in native queries");
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(String name, Calendar value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(String name, Date value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(int position, Calendar value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  @SuppressWarnings("deprecation")
-  public Query setParameter(int position, Date value, TemporalType temporalType) {
-    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -182,7 +106,6 @@ public class MiniNativeQueryImpl implements Query {
     }
     
     // 2. Scan SQL for positional parameters like ?1, ?2
-    // This is a simple regex-based discovery for Spring Data JPA
     java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\?(\\d+)");
     java.util.regex.Matcher m = p.matcher(sql);
     while (m.find()) {
@@ -214,11 +137,6 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public <T> Parameter<T> getParameter(String name, Class<T> type) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public Parameter<?> getParameter(int position) {
     return new Parameter<Object>() {
       @Override
@@ -239,12 +157,6 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public <T> Parameter<T> getParameter(int position, Class<T> type) {
-    System.out.println("MiniNativeQueryImpl: getParameter(" + position + ", " + type + ")");
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public boolean isBound(Parameter<?> param) {
     Integer pos = param.getPosition();
     if (pos != null && pos > 0 && pos <= parameters.size()) {
@@ -254,77 +166,7 @@ public class MiniNativeQueryImpl implements Query {
   }
 
   @Override
-  public <T> T getParameterValue(Parameter<T> param) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Object getParameterValue(String name) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public Object getParameterValue(int position) {
     return parameters.get(position - 1);
-  }
-
-  @Override
-  public Query setFlushMode(FlushModeType flushMode) {
-    return this;
-  }
-
-  @Override
-  public FlushModeType getFlushMode() {
-    return FlushModeType.AUTO;
-  }
-
-  @Override
-  public Query setLockMode(LockModeType lockMode) {
-    return this;
-  }
-
-  @Override
-  public LockModeType getLockMode() {
-    return LockModeType.NONE;
-  }
-
-  @Override
-  public <T> T unwrap(Class<T> cls) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Query setTimeout(Integer timeoutMilliseconds) {
-    return this;
-  }
-
-  @Override
-  public Integer getTimeout() {
-    return null;
-  }
-
-  @Override
-  public Query setCacheStoreMode(CacheStoreMode cacheStoreMode) {
-    return this;
-  }
-
-  @Override
-  public CacheStoreMode getCacheStoreMode() {
-    return CacheStoreMode.USE;
-  }
-
-  @Override
-  public Query setCacheRetrieveMode(CacheRetrieveMode cacheRetrieveMode) {
-    return this;
-  }
-
-  @Override
-  public CacheRetrieveMode getCacheRetrieveMode() {
-    return CacheRetrieveMode.USE;
-  }
-
-  @Override
-  public Object getSingleResultOrNull() {
-    return getSingleResult();
   }
 }
