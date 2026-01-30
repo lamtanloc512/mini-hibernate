@@ -12,6 +12,7 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import io.vavr.collection.HashMap;
 import io.vavr.collection.Map;
+import javax.sql.DataSource;
 import io.vavr.control.Try;
 import jakarta.persistence.Cache;
 import jakarta.persistence.EntityGraph;
@@ -27,7 +28,7 @@ import jakarta.persistence.metamodel.Metamodel;
 
 public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
-  private final HikariDataSource dataSource;
+  private final DataSource dataSource;
   private final MetadataParser metadataParser;
   private final Map<Class<?>, EntityMetadata> entityMetadataMap;
   private final Map<String, Object> properties;
@@ -36,7 +37,11 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
 
   private MiniEntityManagerFactoryImpl(Builder builder) {
     this.properties = HashMap.ofAll(builder.properties).mapKeys(String::valueOf).mapValues(v -> (Object) v);
-    this.dataSource = createDataSource(builder.properties);
+    if (builder.dataSource != null) {
+      this.dataSource = builder.dataSource;
+    } else {
+      this.dataSource = createDataSource(builder.properties);
+    }
     this.metadataParser = new MetadataParser();
     this.entityMetadataMap = parseEntities(builder.entityClasses);
   }
@@ -78,8 +83,11 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
   public synchronized void close() {
     if (open) {
       open = false;
-      if (dataSource != null && !dataSource.isClosed()) {
-        dataSource.close();
+      if (dataSource instanceof HikariDataSource) {
+        HikariDataSource hds = (HikariDataSource) dataSource;
+        if (!hds.isClosed()) {
+           hds.close();
+        }
       }
     }
   }
@@ -91,7 +99,7 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
         .getOrElseThrow(() -> new IllegalArgumentException("Unknown entity: " + entityClass.getName()));
   }
 
-  public HikariDataSource getDataSource() {
+  public DataSource getDataSource() {
     return dataSource;
   }
 
@@ -139,6 +147,12 @@ public class MiniEntityManagerFactoryImpl implements MiniEntityManagerFactory {
   public static class Builder {
     private final Properties properties = new Properties();
     private final java.util.Set<Class<?>> entityClasses = new java.util.HashSet<>();
+    private DataSource dataSource;
+
+    public Builder dataSource(DataSource dataSource) {
+      this.dataSource = dataSource;
+      return this;
+    }
 
     public Builder url(String url) {
       properties.setProperty("jakarta.persistence.jdbc.url", url);

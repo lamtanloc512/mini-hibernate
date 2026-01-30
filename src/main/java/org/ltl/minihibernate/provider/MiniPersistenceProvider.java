@@ -130,6 +130,11 @@ public class MiniPersistenceProvider implements PersistenceProvider, ProviderUti
         .forEach(className -> Try.run(() -> builder.addEntityClass(Class.forName(className, true, cl)))
             .onFailure(e -> System.err.println("Failed to load class: " + className)));
 
+    // Use DataSource from PersistenceUnitInfo if available (e.g. from Spring Boot)
+    if (info.getNonJtaDataSource() != null) {
+      builder.dataSource(info.getNonJtaDataSource());
+    }
+
     // Apply properties
     Option.of(info.getProperties()).peek(p -> applyProperties(builder, p));
     applyProperties(builder, props);

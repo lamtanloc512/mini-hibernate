@@ -1,7 +1,7 @@
 package org.ltl.minihibernate.internal.metamodel;
 
-import jakarta.persistence.metamodel.Type;
 import io.vavr.control.Option;
+import jakarta.persistence.metamodel.Type;
 
 public abstract class MiniTypeImpl<X> implements Type<X> {
 
